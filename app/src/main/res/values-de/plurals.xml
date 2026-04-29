@@ -1,0 +1,16 @@
+<resources>
+    <plurals name="media_books_group_summary">
+        <item quantity="one">%d Hörbuch</item>
+        <item quantity="other">%d Hörbücher</item>
+    </plurals>
+
+    <plurals name="media_authors_group_summary">
+        <item quantity="one">%d Autor</item>
+        <item quantity="other">%d Autoren</item>
+    </plurals>
+
+    <plurals name="media_author_book_count">
+        <item quantity="one">%d Hörbuch</item>
+        <item quantity="other">%d Hörbücher</item>
+    </plurals>
+</resources>

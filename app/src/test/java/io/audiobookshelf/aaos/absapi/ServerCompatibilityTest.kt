@@ -1,0 +1,29 @@
+package io.audiobookshelf.aaos.absapi
+
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class ServerCompatibilityTest {
+
+    @Test
+    fun `versions below minimum are rejected`() {
+        val report = ServerCompatibility.evaluate("2.30.9")
+
+        assertFalse(report.isSupported)
+    }
+
+    @Test
+    fun `versions at minimum are supported`() {
+        val report = ServerCompatibility.evaluate("2.31.0")
+
+        assertTrue(report.isSupported)
+    }
+
+    @Test
+    fun `unparseable version stays non-blocking`() {
+        val report = ServerCompatibility.evaluate("nightly-build")
+
+        assertTrue(report.isSupported)
+    }
+}

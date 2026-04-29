@@ -1,0 +1,42 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.AbsAaos" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/abs_background</item>
+        <item name="android:colorBackground">@color/abs_background</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:navigationBarColor">@color/abs_background</item>
+        <item name="android:statusBarColor" tools:targetApi="l">@color/abs_background</item>
+        <item name="android:textColorPrimary">@color/abs_on_surface</item>
+        <item name="android:textColorSecondary">@color/abs_on_surface_variant</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="colorAccent">@color/abs_accent</item>
+        <item name="colorControlNormal">@color/abs_on_surface_variant</item>
+        <item name="colorOnPrimary">@color/abs_on_accent</item>
+        <item name="colorOnSurface">@color/abs_on_surface</item>
+        <item name="colorPrimary">@color/abs_accent</item>
+        <item name="colorSurface">@color/abs_surface</item>
+        <item name="preferenceTheme">@style/PreferenceThemeOverlay.AbsAaos</item>
+    </style>
+
+    <style name="Theme.AbsAaos.CarHost" parent="Theme.AbsAaos">
+        <item name="colorAccent">@color/abs_accent</item>
+    </style>
+
+    <style name="PreferenceThemeOverlay.AbsAaos" parent="@style/PreferenceThemeOverlay.v14.Material">
+        <item name="android:colorAccent">@color/abs_accent</item>
+        <item name="android:colorBackground">@color/abs_background</item>
+        <item name="android:textColorPrimary">@color/abs_on_surface</item>
+        <item name="android:textColorSecondary">@color/abs_on_surface_variant</item>
+        <item name="colorAccent">@color/abs_accent</item>
+        <item name="colorControlNormal">@color/abs_on_surface_variant</item>
+        <item name="colorOnSurface">@color/abs_on_surface</item>
+        <item name="colorSurface">@color/abs_surface</item>
+    </style>
+
+    <style name="TextAppearance.ShelfDrive.SettingsToolbarTitle" parent="TextAppearance.MaterialComponents.Headline5">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:textSize">@dimen/settings_toolbar_title_size</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources>

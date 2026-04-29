@@ -1,0 +1,9 @@
+<resources>
+    <color name="abs_background">#080B0E</color>
+    <color name="abs_surface">#101820</color>
+    <color name="abs_surface_variant">#20303C</color>
+    <color name="abs_on_surface">#F3EBDC</color>
+    <color name="abs_on_surface_variant">#B7AEA1</color>
+    <color name="abs_accent">#C86E3A</color>
+    <color name="abs_on_accent">#1B100B</color>
+</resources>

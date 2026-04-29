@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" role="img" aria-labelledby="title desc">
+  <title id="title">Now Playing screenshot placeholder</title>
+  <desc id="desc">Placeholder for an Android Automotive OS now playing screenshot.</desc>
+  <rect width="1280" height="800" rx="56" fill="#080B0E"/>
+  <circle cx="640" cy="330" r="150" fill="#14232A" stroke="#D6A04D" stroke-width="5"/>
+  <path fill="#F7EFE0" d="M600 245h34a14 14 0 0 1 14 14v106h-62V259a14 14 0 0 1 14-14z"/>
+  <path fill="#2ED7B4" d="M672 225h38a16 16 0 0 1 16 16v124h-70V241a16 16 0 0 1 16-16z"/>
+  <path fill="#D96F3D" d="M742 270h34a14 14 0 0 1 14 14v81h-62v-81a14 14 0 0 1 14-14z"/>
+  <text x="640" y="560" fill="#F7EFE0" font-family="Inter, Arial, sans-serif" font-size="58" font-weight="700" text-anchor="middle">Now Playing</text>
+  <text x="640" y="636" fill="#B7AEA1" font-family="Inter, Arial, sans-serif" font-size="30" text-anchor="middle">Replace with a playback screenshot</text>
+</svg>

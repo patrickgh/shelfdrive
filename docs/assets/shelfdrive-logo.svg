@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" role="img" aria-labelledby="title desc">
+  <title id="title">ShelfDrive logo</title>
+  <desc id="desc">A dark rounded app icon with books and a road-like fork.</desc>
+  <rect width="108" height="108" fill="#091014"/>
+  <path fill="#14232A" d="M10 10h88a10 10 0 0 1 10 10v68a10 10 0 0 1-10 10H10z"/>
+  <circle cx="54" cy="54" r="40" fill="none" stroke="#D6A04D" stroke-linecap="round" stroke-width="7"/>
+  <path fill="#F7EFE0" d="M30 31h10a5 5 0 0 1 5 5v25H25V36a5 5 0 0 1 5-5z"/>
+  <path fill="#2ED7B4" d="M49 24h12a6 6 0 0 1 6 6v31H43V30a6 6 0 0 1 6-6z"/>
+  <path fill="#D96F3D" d="M70 34h9a5 5 0 0 1 5 5v22H65V39a5 5 0 0 1 5-5z"/>
+  <path fill="#091014" d="M34 40h3v14h-3zM54 34h3v18h-3zM73 43h3v10h-3z"/>
+  <path fill="none" stroke="#F7EFE0" stroke-linecap="round" stroke-width="8" d="M24 61h60M54 60v27"/>
+  <circle cx="54" cy="62" r="8" fill="#F7EFE0"/>
+</svg>

@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory
+        android:key="connection_category"
+        android:title="@string/settings_category_connection">
+
+        <Preference
+            android:key="connection_status"
+            android:title="@string/settings_connection_status_title"
+            android:summary="@string/settings_connection_status_initial" />
+
+        <Preference
+            android:key="auth_status"
+            android:title="@string/settings_auth_status_title"
+            android:summary="@string/settings_auth_status_logged_out" />
+
+        <Preference
+            android:key="library_count"
+            android:title="@string/settings_library_count_title"
+            android:summary="@string/settings_library_count_unknown" />
+
+        <Preference
+            android:key="resync_action"
+            android:enabled="false"
+            android:title="@string/settings_resync_title"
+            android:summary="@string/settings_resync_summary_idle" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="account_category"
+        android:title="@string/settings_category_account">
+
+        <EditTextPreference
+            android:key="server_url"
+            android:title="@string/settings_server_url_title"
+            android:persistent="false"
+            android:summary="@string/settings_not_configured" />
+
+        <EditTextPreference
+            android:key="username"
+            android:title="@string/settings_username_title"
+            android:persistent="false"
+            android:summary="@string/settings_not_configured" />
+
+        <EditTextPreference
+            android:key="password"
+            android:title="@string/settings_password_title"
+            android:persistent="false"
+            android:summary="@string/settings_password_summary_missing" />
+
+        <Preference
+            android:key="account_action"
+            android:title="@string/settings_login_title"
+            android:summary="@string/settings_login_summary" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="playback_category"
+        android:title="@string/settings_category_playback">
+
+        <CheckBoxPreference
+            android:key="@string/settings_key_rewind_on_pause"
+            android:defaultValue="false"
+            android:title="@string/settings_rewind_on_pause_title"
+            android:summary="@string/settings_rewind_on_pause_summary" />
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:key="storage_category"
+        android:title="@string/settings_category_storage">
+
+        <Preference
+            android:key="clear_cache_action"
+            android:title="@string/settings_clear_cache_title"
+            android:summary="@string/settings_clear_cache_summary_initial" />
+    </PreferenceCategory>
+
+</PreferenceScreen>

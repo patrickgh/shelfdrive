@@ -1,0 +1,14 @@
+<resources>
+    <dimen name="settings_toolbar_height">104dp</dimen>
+    <dimen name="settings_toolbar_horizontal_padding">28dp</dimen>
+    <dimen name="settings_list_horizontal_padding">56dp</dimen>
+    <dimen name="settings_list_vertical_padding">24dp</dimen>
+    <dimen name="settings_preference_min_height">116dp</dimen>
+    <dimen name="settings_preference_margin_vertical">8dp</dimen>
+    <dimen name="settings_preference_padding_horizontal">28dp</dimen>
+    <dimen name="settings_preference_padding_vertical">18dp</dimen>
+    <dimen name="settings_preference_title_size">28sp</dimen>
+    <dimen name="settings_preference_summary_size">23sp</dimen>
+    <dimen name="settings_category_title_size">22sp</dimen>
+    <dimen name="settings_toolbar_title_size">34sp</dimen>
+</resources>
