@@ -28,6 +28,12 @@ interface BookDao {
     @Query("SELECT COUNT(*) FROM books")
     suspend fun count(): Int
 
+    @Query("SELECT id FROM books WHERE id IN (:bookIds)")
+    suspend fun getExistingIds(bookIds: List<String>): List<String>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM books WHERE id = :bookId)")
+    suspend fun existsById(bookId: String): Boolean
+
     @Query(
         """
         SELECT * FROM books

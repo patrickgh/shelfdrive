@@ -33,12 +33,9 @@ ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 
 ## Screenshots
 
-Real screenshots are not included yet. Replace these placeholders with AAOS
-screenshots before publishing the project or store listing.
-
-| Browse | Now Playing | Settings |
+| Library | Now Playing | Settings |
 | --- | --- | --- |
-| <img src="docs/screenshots/browse.svg" alt="Browse screenshot placeholder" width="260"> | <img src="docs/screenshots/now-playing.svg" alt="Now Playing screenshot placeholder" width="260"> | <img src="docs/screenshots/settings.svg" alt="Settings screenshot placeholder" width="260"> |
+| <img src="docs/screenshots/library.jpg" alt="ShelfDrive library browser on Android Automotive OS" width="260"> | <img src="docs/screenshots/now-playing.jpg" alt="ShelfDrive now playing screen on Android Automotive OS" width="260"> | <img src="docs/screenshots/settings.jpg" alt="ShelfDrive settings screen" width="260"> |
 
 ## Status
 

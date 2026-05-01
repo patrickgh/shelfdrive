@@ -71,10 +71,11 @@ class ProgressSyncRepository(
             }
         }
 
+        val knownProgressEntries = progressEntries.onlyForKnownBooks()
         database.withTransaction {
             database.mediaProgressDao().clearAll()
-            if (progressEntries.isNotEmpty()) {
-                database.mediaProgressDao().upsertAll(progressEntries)
+            if (knownProgressEntries.isNotEmpty()) {
+                database.mediaProgressDao().upsertAll(knownProgressEntries)
             }
         }
     }
@@ -109,7 +110,7 @@ class ProgressSyncRepository(
 
         if (snapshot.isFinished) {
             database.mediaProgressDao().deleteByBookId(snapshot.bookId)
-        } else {
+        } else if (database.bookDao().existsById(snapshot.bookId)) {
             database.mediaProgressDao().upsert(
                 MediaProgressEntity(
                     bookId = snapshot.bookId,
@@ -123,8 +124,24 @@ class ProgressSyncRepository(
                     finishedAt = null,
                 ),
             )
+        } else {
+            Log.w(TAG, "Skipping local progress cache for unknown book ${snapshot.bookId}")
         }
         return true
+    }
+
+    private suspend fun List<MediaProgressEntity>.onlyForKnownBooks(): List<MediaProgressEntity> {
+        if (isEmpty()) {
+            return emptyList()
+        }
+
+        val knownBookIds = database.bookDao().getExistingIds(map { it.bookId }).toSet()
+        val knownProgressEntries = filter { it.bookId in knownBookIds }
+        val skippedCount = size - knownProgressEntries.size
+        if (skippedCount > 0) {
+            Log.w(TAG, "Skipping $skippedCount progress entries for unknown books.")
+        }
+        return knownProgressEntries
     }
 
     private fun MediaProgressSummary.toEntity(fallbackLastUpdate: Long?): MediaProgressEntity {
