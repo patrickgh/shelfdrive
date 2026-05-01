@@ -28,8 +28,11 @@ provided through Android media APIs and rendered by the vehicle media host.
 ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 
 > [!WARNING]
-> AI Disclaimer / Play Store Release:
-> This project was built with substantial AI assistance. It works for my environment/use cases but may fail on other cars. The code, documentation, architecture, and implementation details should be reviewed before production use. The app is currently only available via my internal test track on the Google Play Store. A public release is not yet planned.
+> AI Disclaimer:
+> This project was built with substantial AI assistance. It works for my environment/use cases but may fail on other cars. The code, documentation, architecture, and implementation details should be reviewed before production use.
+
+> [!INFO]
+> The app is currently only available via my internal test track on the Google Play Store. If you accept the alpha stage you can reach out (dsaos9632@gmail.com) and get invited to try it yourself. A public release is not yet planned.
 
 ## Screenshots
 
