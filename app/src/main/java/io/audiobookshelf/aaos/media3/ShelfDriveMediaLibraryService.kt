@@ -1,10 +1,7 @@
 package io.audiobookshelf.aaos.media3
 
 import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.net.Uri
 import android.os.Bundle
-import android.os.Process
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.concurrent.futures.CallbackToFutureAdapter
@@ -12,42 +9,31 @@ import androidx.media.utils.MediaConstants
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
-import io.audiobookshelf.aaos.R
-import io.audiobookshelf.aaos.absapi.ApiException
 import io.audiobookshelf.aaos.account.AudiobookshelfAccountContract
 import io.audiobookshelf.aaos.account.AudiobookshelfAccountRegistry
-import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthRepository
 import io.audiobookshelf.aaos.auth.AuthSnapshot
-import io.audiobookshelf.aaos.auth.AuthStatus
 import io.audiobookshelf.aaos.auth.AuthStorage
-import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
-import io.audiobookshelf.aaos.browser.CatalogBrowseRepository.BrowseCollection
 import io.audiobookshelf.aaos.cache.CacheCommands
 import io.audiobookshelf.aaos.cache.CacheRepository
-import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
-import io.audiobookshelf.aaos.catalog.persistence.BookEntity
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.host.MediaHostIntentFactory
 import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
@@ -59,7 +45,6 @@ import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlaybackSession
 import io.audiobookshelf.aaos.progress.PlaybackProgressReason
 import io.audiobookshelf.aaos.progress.PlaybackProgressSnapshot
 import io.audiobookshelf.aaos.progress.ProgressSyncRepository
-import io.audiobookshelf.aaos.status.UserVisibleStatus
 import io.audiobookshelf.aaos.sync.CatalogSyncRepository
 import io.audiobookshelf.aaos.sync.SyncCommands
 import io.audiobookshelf.aaos.sync.SyncSnapshot
@@ -84,12 +69,12 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var playbackRepository: AudiobookshelfPlaybackRepository
     private lateinit var progressSyncRepository: ProgressSyncRepository
     private lateinit var cacheRepository: CacheRepository
+    private lateinit var mediaCatalog: ShelfDriveMediaCatalog
+    private lateinit var sessionPolicy: ShelfDriveSessionPolicy
     private lateinit var player: ExoPlayer
     private lateinit var mediaLibrarySession: MediaLibrarySession
 
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-    private var authSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
-    private var syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
     private var activeBook: ResolvedAudiobookPlayback? = null
     private var periodicProgressJob: Job? = null
     private var wasPlayWhenReady: Boolean = false
@@ -104,6 +89,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         )
         val database = CatalogDatabase.getInstance(this)
         browseRepository = CatalogBrowseRepository(database)
+        mediaCatalog = ShelfDriveMediaCatalog(this, browseRepository)
+        sessionPolicy = ShelfDriveSessionPolicy(this)
         syncRepository = CatalogSyncRepository(
             database = database,
             authRepository = authRepository,
@@ -140,7 +127,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
         mediaLibrarySession = MediaLibrarySession.Builder(this, player, LibraryCallback())
             .setSessionActivity(MediaHostIntentFactory.createMediaHostPendingIntent(this))
-            .setMediaButtonPreferences(mediaButtonPreferences())
+            .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences())
             .build()
 
         serviceScope.launch {
@@ -227,15 +214,15 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             session: MediaSession,
             controller: MediaSession.ControllerInfo,
         ): MediaSession.ConnectionResult {
-            if (!isAllowedController(controller)) {
+            if (!sessionPolicy.isAllowedController(controller)) {
                 Log.w(TAG, "Rejected Media3 controller ${controller.packageName}/${controller.uid}.")
                 return MediaSession.ConnectionResult.reject()
             }
 
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(availableSessionCommands())
-                .setAvailablePlayerCommands(availablePlayerCommands())
-                .setMediaButtonPreferences(mediaButtonPreferences())
+                .setAvailableSessionCommands(sessionPolicy.availableSessionCommands())
+                .setAvailablePlayerCommands(sessionPolicy.availablePlayerCommands())
+                .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences())
                 .setSessionActivity(MediaHostIntentFactory.createMediaHostPendingIntent(this@ShelfDriveMediaLibraryService))
                 .build()
         }
@@ -245,7 +232,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            return Futures.immediateFuture(LibraryResult.ofItem(buildRootItem(), rootParams(params)))
+            return Futures.immediateFuture(LibraryResult.ofItem(mediaCatalog.buildRootItem(), mediaCatalog.rootParams(params)))
         }
 
         override fun onGetItem(
@@ -254,7 +241,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             mediaId: String,
         ): ListenableFuture<LibraryResult<MediaItem>> {
             return serviceFuture("getItem:$mediaId") {
-                val item = loadItem(mediaId)
+                val item = mediaCatalog.loadItem(mediaId)
                 if (item == null) {
                     LibraryResult.ofError(SessionError.ERROR_BAD_VALUE)
                 } else {
@@ -272,8 +259,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceFuture("getChildren:$parentId") {
-                val children = loadChildren(parentId)
-                LibraryResult.ofItemList(pageItems(children, page, pageSize), params)
+                val children = mediaCatalog.loadChildren(parentId)
+                LibraryResult.ofItemList(mediaCatalog.pageItems(children, page, pageSize), params)
             }
         }
 
@@ -284,7 +271,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> {
             return serviceFuture("search:$query") {
-                val count = loadSearchResults(query).size
+                val count = mediaCatalog.loadSearchResults(query).size
                 session.notifySearchResultChanged(browser, query, count, params)
                 LibraryResult.ofVoid(params)
             }
@@ -299,7 +286,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceFuture("getSearchResult:$query") {
-                LibraryResult.ofItemList(pageItems(loadSearchResults(query), page, pageSize), params)
+                LibraryResult.ofItemList(
+                    mediaCatalog.pageItems(mediaCatalog.loadSearchResults(query), page, pageSize),
+                    params,
+                )
             }
         }
 
@@ -319,7 +309,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 activeBook = playback.playback
                 configureAuthenticatedPlayback(playback.accessToken)
                 MediaSession.MediaItemsWithStartPosition(
-                    playback.playback.toPlayableMediaItems(),
+                    playback.playback.toMedia3PlayableItems(),
                     playback.playback.startIndex,
                     playback.playback.startPositionMs,
                 )
@@ -393,202 +383,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
     }
 
-    private suspend fun loadChildren(parentId: String): List<MediaItem> {
-        val node = BrowseNodeId.parse(parentId) ?: return emptyList()
-        return when (node) {
-            BrowseNodeId.Root -> listOf(buildRecentRootItem(), buildBooksRootItem(), buildAuthorsRootItem())
-            BrowseNodeId.Recent -> loadRecentItems()
-            BrowseNodeId.Books -> loadBooksItems()
-            is BrowseNodeId.BooksBucket -> browseRepository.getBooksForBucket(node.bucket).map(::buildPlayableBookItem)
-            BrowseNodeId.Authors -> loadAuthorsItems()
-            is BrowseNodeId.AuthorsBucket -> browseRepository.getAuthorsForBucket(node.bucket).map(::buildAuthorItem)
-            is BrowseNodeId.Author -> loadAuthorItems(node.authorId)
-            is BrowseNodeId.AuthorBooksBucket -> browseRepository
-                .getBooksForAuthorBucket(node.authorId, node.bucket)
-                .map(::buildPlayableBookItem)
-            is BrowseNodeId.Book -> emptyList()
-        }
-    }
-
-    private suspend fun loadItem(mediaId: String): MediaItem? {
-        val node = BrowseNodeId.parse(mediaId) ?: return null
-        return when (node) {
-            BrowseNodeId.Root -> buildRootItem()
-            BrowseNodeId.Recent -> buildRecentRootItem()
-            BrowseNodeId.Books -> buildBooksRootItem()
-            BrowseNodeId.Authors -> buildAuthorsRootItem()
-            is BrowseNodeId.Book -> browseRepository.getPlayableBook(node.bookId)?.let(::buildPlayableBookItem)
-            is BrowseNodeId.Author -> browseRepository.getAuthor(node.authorId)?.let(::buildAuthorItem)
-            is BrowseNodeId.BooksBucket,
-            is BrowseNodeId.AuthorsBucket,
-            is BrowseNodeId.AuthorBooksBucket,
-            -> null
-        }
-    }
-
-    private suspend fun loadRecentItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
-        }
-        val recentBooks = browseRepository.getRecentBooks()
-        if (recentBooks.isNotEmpty()) {
-            return recentBooks.map(::buildPlayableBookItem)
-        }
-        if (authSnapshot.isAuthenticated && syncSnapshot.status == SyncStatus.RUNNING && syncSnapshot.bookCount == 0) {
-            return listOf(
-                buildStateItem(
-                    mediaId = "recent:sync_running",
-                    title = getString(R.string.media_sync_running_title),
-                    subtitle = getString(R.string.media_sync_running_summary),
-                ),
-            )
-        }
-        if (authSnapshot.isAuthenticated && syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
-            return listOf(buildConnectionProblemItem("recent:sync_failed"))
-        }
-        return listOf(
-            buildStateItem(
-                mediaId = "recent:empty",
-                title = getString(R.string.media_recent_empty_title),
-                subtitle = getString(R.string.media_recent_empty_summary),
-            ),
-        )
-    }
-
-    private suspend fun loadBooksItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
-        }
-        if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
-            return listOf(buildConnectionProblemItem("books:sync_failed"))
-        }
-        return when (val books = browseRepository.getBooksRoot()) {
-            BrowseCollection.Empty -> listOf(
-                buildStateItem(
-                    mediaId = "books:empty",
-                    title = getString(R.string.media_books_empty_title),
-                    subtitle = getString(R.string.media_books_empty_summary),
-                ),
-            )
-
-            is BrowseCollection.Direct -> books.items.map(::buildPlayableBookItem)
-            is BrowseCollection.Grouped -> books.groups.map { group ->
-                buildBrowsableItem(
-                    mediaId = BrowseNodeId.BooksBucket(group.key).serialize(),
-                    title = group.label,
-                    subtitle = resources.getQuantityString(
-                        R.plurals.media_books_group_summary,
-                        group.count,
-                        group.count,
-                    ),
-                    extras = childStyleExtras(
-                        playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                    ),
-                )
-            }
-        }
-    }
-
-    private suspend fun loadAuthorsItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
-        }
-        if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.authorCount == 0) {
-            return listOf(buildConnectionProblemItem("authors:sync_failed"))
-        }
-        return when (val authors = browseRepository.getAuthorsRoot()) {
-            BrowseCollection.Empty -> listOf(
-                buildStateItem(
-                    mediaId = "authors:empty",
-                    title = getString(R.string.media_authors_empty_title),
-                    subtitle = getString(R.string.media_authors_empty_summary),
-                ),
-            )
-
-            is BrowseCollection.Direct -> authors.items.map(::buildAuthorItem)
-            is BrowseCollection.Grouped -> authors.groups.map { group ->
-                buildBrowsableItem(
-                    mediaId = BrowseNodeId.AuthorsBucket(group.key).serialize(),
-                    title = group.label,
-                    subtitle = resources.getQuantityString(
-                        R.plurals.media_authors_group_summary,
-                        group.count,
-                        group.count,
-                    ),
-                    extras = childStyleExtras(
-                        browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                    ),
-                )
-            }
-        }
-    }
-
-    private suspend fun loadAuthorItems(authorId: String): List<MediaItem> {
-        val author = browseRepository.getAuthor(authorId)
-            ?: return listOf(
-                buildStateItem(
-                    mediaId = "author:missing:$authorId",
-                    title = getString(R.string.media_author_missing_title),
-                    subtitle = getString(R.string.media_author_missing_summary),
-                ),
-            )
-        return when (val books = browseRepository.getBooksForAuthor(authorId)) {
-            BrowseCollection.Empty -> listOf(
-                buildStateItem(
-                    mediaId = "author:$authorId:empty",
-                    title = author.name,
-                    subtitle = getString(R.string.media_author_books_empty_summary),
-                ),
-            )
-
-            is BrowseCollection.Direct -> books.items.map(::buildPlayableBookItem)
-            is BrowseCollection.Grouped -> books.groups.map { group ->
-                buildBrowsableItem(
-                    mediaId = BrowseNodeId.AuthorBooksBucket(authorId, group.key).serialize(),
-                    title = group.label,
-                    subtitle = resources.getQuantityString(
-                        R.plurals.media_books_group_summary,
-                        group.count,
-                        group.count,
-                    ),
-                    extras = childStyleExtras(
-                        playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                    ),
-                )
-            }
-        }
-    }
-
-    private suspend fun loadSearchResults(query: String): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
-        }
-
-        val searchQuery = query.trim()
-        val books = if (searchQuery.isBlank()) {
-            browseRepository.getRecentBooks()
-        } else {
-            browseRepository.searchBooks(searchQuery)
-        }
-        val authors = if (searchQuery.isBlank()) {
-            emptyList()
-        } else {
-            browseRepository.searchAuthors(searchQuery)
-        }
-
-        val results = authors.map(::buildAuthorItem) + books.map(::buildPlayableBookItem)
-        if (results.isNotEmpty()) {
-            return results
-        }
-        return listOf(
-            buildStateItem(
-                mediaId = "search:empty:${searchQuery.hashCode()}",
-                title = getString(R.string.media_search_empty_title),
-                subtitle = getString(R.string.media_search_empty_summary, searchQuery),
-            ),
-        )
-    }
-
     private suspend fun resolveRequestedPlayback(requestedItem: MediaItem): ResolvedAudiobookPlaybackSession {
         val requestedBookId = (BrowseNodeId.parse(requestedItem.mediaId) as? BrowseNodeId.Book)?.bookId
         if (requestedBookId != null) {
@@ -610,176 +404,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private fun configureAuthenticatedPlayback(accessToken: String) {
         httpDataSourceFactory.setUserAgent("ShelfDrive/0.1.0")
         httpDataSourceFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
-    }
-
-    private fun buildRootItem(): MediaItem {
-        return buildBrowsableItem(
-            mediaId = BrowseNodeId.Root.serialize(),
-            title = getString(R.string.app_name),
-            iconUri = drawableUri(R.drawable.ic_app_icon),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            ),
-        )
-    }
-
-    private fun buildRecentRootItem(): MediaItem {
-        return buildBrowsableItem(
-            mediaId = BrowseNodeId.Recent.serialize(),
-            title = getString(R.string.media_root_recent),
-            iconUri = drawableUri(R.drawable.ic_menu_recent),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-            ),
-        )
-    }
-
-    private fun buildBooksRootItem(): MediaItem {
-        return buildBrowsableItem(
-            mediaId = BrowseNodeId.Books.serialize(),
-            title = getString(R.string.media_root_books),
-            iconUri = drawableUri(R.drawable.ic_menu_books),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-            ),
-        )
-    }
-
-    private fun buildAuthorsRootItem(): MediaItem {
-        return buildBrowsableItem(
-            mediaId = BrowseNodeId.Authors.serialize(),
-            title = getString(R.string.media_root_authors),
-            iconUri = drawableUri(R.drawable.ic_menu_authors),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-            ),
-        )
-    }
-
-    private fun buildAuthStateItem(): MediaItem {
-        val state = when (authSnapshot.status) {
-            AuthStatus.SESSION_EXPIRED -> Triple(
-                "auth:expired",
-                getString(R.string.media_session_expired_title),
-                getString(R.string.media_session_expired_summary),
-            )
-
-            AuthStatus.LOGIN_FAILED -> Triple(
-                "auth:login_failed",
-                getString(R.string.media_login_failed_title),
-                getString(R.string.media_settings_hint),
-            )
-
-            else -> Triple(
-                "auth:required",
-                getString(R.string.media_auth_required_title),
-                getString(R.string.media_auth_required_summary),
-            )
-        }
-        return buildStateItem(state.first, state.second, state.third, drawableUri(R.drawable.ic_menu_lock))
-    }
-
-    private fun buildConnectionProblemItem(mediaId: String): MediaItem {
-        return buildStateItem(
-            mediaId = mediaId,
-            title = getString(R.string.media_connection_problem_title),
-            subtitle = getString(R.string.media_settings_hint),
-            iconUri = drawableUri(R.drawable.ic_menu_connection_problem),
-        )
-    }
-
-    private fun buildPlayableBookItem(book: BookEntity): MediaItem {
-        val subtitle = book.authorDisplay ?: book.subtitle ?: book.description
-        return MediaItem.Builder()
-            .setMediaId(BrowseNodeId.Book(book.id).serialize())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(book.title)
-                    .setArtist(subtitle)
-                    .setAlbumTitle(book.title)
-                    .setArtworkUri(ArtworkUriFactory.bookCover(book.id, ArtworkUriFactory.signatureFor(book.coverPath)))
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .setDurationMs(book.durationMs)
-                    .setExtras(childStyleExtras())
-                    .build(),
-            )
-            .build()
-    }
-
-    private fun buildAuthorItem(author: AuthorEntity): MediaItem {
-        return buildBrowsableItem(
-            mediaId = BrowseNodeId.Author(author.id).serialize(),
-            title = author.name,
-            subtitle = resources.getQuantityString(
-                R.plurals.media_author_book_count,
-                author.numBooks,
-                author.numBooks,
-            ),
-            iconUri = ArtworkUriFactory.authorImage(author.id, ArtworkUriFactory.signatureFor(author.imagePath)),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-            ),
-        )
-    }
-
-    private fun buildStateItem(
-        mediaId: String,
-        title: String,
-        subtitle: String,
-        iconUri: Uri? = null,
-    ): MediaItem {
-        return buildBrowsableItem(mediaId, title, subtitle, iconUri)
-    }
-
-    private fun buildBrowsableItem(
-        mediaId: String,
-        title: String,
-        subtitle: String? = null,
-        iconUri: Uri? = null,
-        extras: Bundle? = null,
-    ): MediaItem {
-        return MediaItem.Builder()
-            .setMediaId(mediaId)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist(subtitle)
-                    .setArtworkUri(iconUri)
-                    .setIsBrowsable(true)
-                    .setIsPlayable(false)
-                    .setExtras(extras ?: childStyleExtras())
-                    .build(),
-            )
-            .build()
-    }
-
-    private fun ResolvedAudiobookPlayback.toPlayableMediaItems(): List<MediaItem> {
-        val browserMediaId = BrowseNodeId.Book(bookId).serialize()
-        return queue.map { track ->
-            MediaItem.Builder()
-                .setMediaId("${browserMediaId}:${track.id}")
-                .setUri(track.contentUrl)
-                .setMimeType(track.mimeType)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(title)
-                        .setArtist(author)
-                        .setAlbumTitle(title)
-                        .setAlbumArtist(author)
-                        .setArtworkUri(artworkUri)
-                        .setIsBrowsable(false)
-                        .setIsPlayable(true)
-                        .setDurationMs(durationMs ?: track.durationMs)
-                        .build(),
-                )
-                .build()
-        }
     }
 
     private fun startPeriodicProgressUpdates() {
@@ -841,19 +465,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             .coerceAtMost(playback.durationMs ?: Long.MAX_VALUE)
     }
 
-    private fun pageItems(items: List<MediaItem>, page: Int, pageSize: Int): List<MediaItem> {
-        if (page < 0 || pageSize <= 0) {
-            return items
-        }
-        val fromIndex = page * pageSize
-        if (fromIndex >= items.size) {
-            return emptyList()
-        }
-        return items.subList(fromIndex, (fromIndex + pageSize).coerceAtMost(items.size))
-    }
-
     private fun updateAuthSnapshot(snapshot: AuthSnapshot) {
-        authSnapshot = snapshot
+        mediaCatalog.authSnapshot = snapshot
         mediaLibrarySession.setSessionExtras(
             Bundle().apply {
                 if (!snapshot.username.isNullOrBlank()) {
@@ -866,7 +479,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private fun updateSyncSnapshot(snapshot: SyncSnapshot) {
-        syncSnapshot = snapshot
+        mediaCatalog.syncSnapshot = snapshot
         notifyBrowseTreeChanged()
     }
 
@@ -878,116 +491,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
-    }
-
-    private fun rootParams(params: LibraryParams?): LibraryParams {
-        val extras = Bundle(params?.extras ?: Bundle.EMPTY).apply {
-            putBoolean(CONTENT_STYLE_SUPPORTED, true)
-            putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
-            putInt(
-                MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-            putInt(
-                MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-        }
-        return LibraryParams.Builder()
-            .setExtras(extras)
-            .build()
-    }
-
-    private fun childStyleExtras(
-        browsableStyle: Int? = null,
-        playableStyle: Int? = null,
-    ): Bundle {
-        return Bundle().apply {
-            browsableStyle?.let {
-                putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it)
-            }
-            playableStyle?.let {
-                putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it)
-            }
-        }
-    }
-
-    private fun drawableUri(drawableResId: Int): Uri {
-        return Uri.Builder()
-            .scheme("android.resource")
-            .authority(packageName)
-            .appendPath(resources.getResourceTypeName(drawableResId))
-            .appendPath(resources.getResourceEntryName(drawableResId))
-            .build()
-    }
-
-    private fun isAllowedController(controller: MediaSession.ControllerInfo): Boolean {
-        val uid = controller.uid
-        val packageName = controller.packageName
-        if (uid == Process.SYSTEM_UID) {
-            return true
-        }
-        if (uid == applicationInfo.uid && packageName == this.packageName) {
-            return true
-        }
-        val packagesForUid = packageManager.getPackagesForUid(uid)?.toSet().orEmpty()
-        if (packagesForUid.isEmpty()) {
-            return true
-        }
-        if (packageName !in packagesForUid) {
-            return false
-        }
-        return packagesForUid.any { candidatePackage ->
-            val info = runCatching {
-                packageManager.getApplicationInfo(candidatePackage, 0)
-            }.getOrNull() ?: return@any false
-            info.flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
-                info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0 ||
-                candidatePackage == this.packageName
-        }
-    }
-
-    private fun availableSessionCommands(): SessionCommands {
-        return MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-            .buildUpon()
-            .add(SessionCommand(AuthCommands.CMD_GET_AUTH_STATE, Bundle.EMPTY))
-            .add(SessionCommand(AuthCommands.CMD_LOGIN, Bundle.EMPTY))
-            .add(SessionCommand(AuthCommands.CMD_LOGOUT, Bundle.EMPTY))
-            .add(SessionCommand(CacheCommands.CMD_GET_CACHE_STATE, Bundle.EMPTY))
-            .add(SessionCommand(CacheCommands.CMD_CLEAR_CACHE, Bundle.EMPTY))
-            .add(SessionCommand(SyncCommands.CMD_GET_SYNC_STATE, Bundle.EMPTY))
-            .add(SessionCommand(SyncCommands.CMD_SYNC_NOW, Bundle.EMPTY))
-            .build()
-    }
-
-    private fun availablePlayerCommands(): Player.Commands {
-        return MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
-            .buildUpon()
-            .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-            .remove(Player.COMMAND_SEEK_TO_NEXT)
-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
-            .build()
-    }
-
-    private fun mediaButtonPreferences(): List<CommandButton> {
-        return listOf(
-            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
-                .setDisplayName(getString(R.string.media_action_rewind_15))
-                .setSlots(CommandButton.SLOT_BACK)
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
-                .setDisplayName(getString(R.string.media_action_forward_15))
-                .setSlots(CommandButton.SLOT_FORWARD)
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_PLAYBACK_SPEED)
-                .setPlayerCommand(Player.COMMAND_SET_SPEED_AND_PITCH)
-                .setDisplayName(getString(R.string.media_action_playback_speed))
-                .setSlots(CommandButton.SLOT_OVERFLOW)
-                .build(),
-        )
     }
 
     private fun <T> serviceFuture(
@@ -1010,18 +513,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
     }
 
-    private fun IOException.toPlaybackMessage(): String {
-        return when (this) {
-            is AuthenticationRequiredException -> UserVisibleStatus.SESSION_EXPIRED
-            is ApiException -> when (statusCode) {
-                401 -> UserVisibleStatus.SESSION_EXPIRED
-                else -> UserVisibleStatus.PLAYBACK_START_FAILED
-            }
-            else -> message?.takeIf { it.isNotBlank() }
-                ?: UserVisibleStatus.PLAYBACK_START_FAILED
-        }
-    }
-
     private val PlaybackProgressReason.shouldRefreshBrowse: Boolean
         get() = this == PlaybackProgressReason.PAUSED ||
             this == PlaybackProgressReason.STOPPED ||
@@ -1029,7 +520,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     companion object {
         private const val TAG = "ShelfDriveMedia3"
-        private const val CONTENT_STYLE_SUPPORTED = "android.media.browse.CONTENT_STYLE_SUPPORTED"
         private const val SEEK_INCREMENT_MS = 15_000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
     }
