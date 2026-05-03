@@ -45,6 +45,7 @@
     <string name="media_action_rewind_15">15 Sekunden zurück</string>
     <string name="media_action_forward_15">15 Sekunden vor</string>
     <string name="media_action_playback_speed">Abspielgeschwindigkeit</string>
+    <string name="media_action_playback_speed_value">Geschwindigkeit %1$s</string>
     <string name="settings_library_count_unknown">Noch keine Katalogdaten</string>
     <string name="settings_catalog_counts">%1$d Bibliotheken · %2$d Hörbücher · %3$d Autoren</string>
     <string name="settings_catalog_last_updated">Zuletzt aktualisiert: %1$s</string>

@@ -47,10 +47,14 @@ internal class ShelfDriveSessionPolicy(
     }
 
     fun availableSessionCommands(): SessionCommands {
-        return MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+        val builder = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
             .add(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
             .add(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
+        PLAYBACK_SPEEDS.forEach { option ->
+            builder.add(SessionCommand(option.command, Bundle.EMPTY))
+        }
+        return builder
             .add(SessionCommand(AuthCommands.CMD_GET_AUTH_STATE, Bundle.EMPTY))
             .add(SessionCommand(AuthCommands.CMD_LOGIN, Bundle.EMPTY))
             .add(SessionCommand(AuthCommands.CMD_LOGOUT, Bundle.EMPTY))
@@ -83,16 +87,41 @@ internal class ShelfDriveSessionPolicy(
                 .setDisplayName(context.getString(R.string.media_action_forward_15))
                 .setSlots(CommandButton.SLOT_FORWARD)
                 .build(),
+        ) + PLAYBACK_SPEEDS.map { option ->
             CommandButton.Builder(CommandButton.ICON_PLAYBACK_SPEED)
-                .setPlayerCommand(Player.COMMAND_SET_SPEED_AND_PITCH)
-                .setDisplayName(context.getString(R.string.media_action_playback_speed))
+                .setSessionCommand(SessionCommand(option.command, Bundle.EMPTY))
+                .setDisplayName(context.getString(R.string.media_action_playback_speed_value, option.label))
                 .setSlots(CommandButton.SLOT_OVERFLOW)
-                .build(),
-        )
+                .build()
+        }
     }
 
     companion object {
         const val CMD_SEEK_BACK_15 = "io.shelfdrive.app.media3.SEEK_BACK_15"
         const val CMD_SEEK_FORWARD_15 = "io.shelfdrive.app.media3.SEEK_FORWARD_15"
+
+        private val PLAYBACK_SPEEDS = listOf(
+            PlaybackSpeedOption(0.8f, "0.8x"),
+            PlaybackSpeedOption(1.0f, "1.0x"),
+            PlaybackSpeedOption(1.1f, "1.1x"),
+            PlaybackSpeedOption(1.2f, "1.2x"),
+            PlaybackSpeedOption(1.3f, "1.3x"),
+            PlaybackSpeedOption(1.5f, "1.5x"),
+            PlaybackSpeedOption(1.75f, "1.75x"),
+            PlaybackSpeedOption(2.0f, "2.0x"),
+        )
+
+        fun speedForCommand(action: String): Float? {
+            return PLAYBACK_SPEEDS.firstOrNull { it.command == action }?.speed
+        }
     }
 }
+
+private data class PlaybackSpeedOption(
+    val speed: Float,
+    val label: String,
+) {
+    val command: String = "$PLAYBACK_SPEED_COMMAND_PREFIX$label"
+}
+
+private const val PLAYBACK_SPEED_COMMAND_PREFIX = "io.shelfdrive.app.media3.PLAYBACK_SPEED:"

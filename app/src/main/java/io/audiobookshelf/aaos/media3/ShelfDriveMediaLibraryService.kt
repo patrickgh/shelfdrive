@@ -322,24 +322,31 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             customCommand: SessionCommand,
             args: Bundle,
         ): ListenableFuture<SessionResult> {
-            return when (customCommand.customAction) {
-                ShelfDriveSessionPolicy.CMD_SEEK_BACK_15 -> serviceFuture(customCommand.customAction) {
+            val action = customCommand.customAction
+            val requestedSpeed = ShelfDriveSessionPolicy.speedForCommand(action)
+            return when {
+                action == ShelfDriveSessionPolicy.CMD_SEEK_BACK_15 -> serviceFuture(action) {
                     player.seekBack()
                     SessionResult(SessionResult.RESULT_SUCCESS)
                 }
 
-                ShelfDriveSessionPolicy.CMD_SEEK_FORWARD_15 -> serviceFuture(customCommand.customAction) {
+                action == ShelfDriveSessionPolicy.CMD_SEEK_FORWARD_15 -> serviceFuture(action) {
                     player.seekForward()
                     SessionResult(SessionResult.RESULT_SUCCESS)
                 }
 
-                AuthCommands.CMD_GET_AUTH_STATE -> serviceFuture(customCommand.customAction) {
+                requestedSpeed != null -> serviceFuture(action) {
+                    player.setPlaybackSpeed(requestedSpeed)
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                action == AuthCommands.CMD_GET_AUTH_STATE -> serviceFuture(action) {
                     val snapshot = authRepository.bootstrap()
                     updateAuthSnapshot(snapshot)
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
-                AuthCommands.CMD_LOGIN -> serviceFuture(customCommand.customAction) {
+                action == AuthCommands.CMD_LOGIN -> serviceFuture(action) {
                     val snapshot = authRepository.login(
                         requestedBaseUrl = args.getString(AuthCommands.EXTRA_SERVER_URL),
                         requestedUsername = args.getString(AuthCommands.EXTRA_USERNAME),
@@ -349,7 +356,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
-                AuthCommands.CMD_LOGOUT -> serviceFuture(customCommand.customAction) {
+                action == AuthCommands.CMD_LOGOUT -> serviceFuture(action) {
                     player.stop()
                     player.clearMediaItems()
                     activeBook = null
@@ -360,11 +367,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
-                CacheCommands.CMD_GET_CACHE_STATE -> serviceFuture(customCommand.customAction) {
+                action == CacheCommands.CMD_GET_CACHE_STATE -> serviceFuture(action) {
                     SessionResult(SessionResult.RESULT_SUCCESS, cacheRepository.loadSnapshot().toBundle())
                 }
 
-                CacheCommands.CMD_CLEAR_CACHE -> serviceFuture(customCommand.customAction) {
+                action == CacheCommands.CMD_CLEAR_CACHE -> serviceFuture(action) {
                     player.stop()
                     player.clearMediaItems()
                     activeBook = null
@@ -373,13 +380,13 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
-                SyncCommands.CMD_GET_SYNC_STATE -> serviceFuture(customCommand.customAction) {
+                action == SyncCommands.CMD_GET_SYNC_STATE -> serviceFuture(action) {
                     val snapshot = syncRepository.loadSnapshot()
                     updateSyncSnapshot(snapshot)
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
-                SyncCommands.CMD_SYNC_NOW -> serviceFuture(customCommand.customAction) {
+                action == SyncCommands.CMD_SYNC_NOW -> serviceFuture(action) {
                     val snapshot = syncRepository.syncNow()
                     if (snapshot.status != SyncStatus.FAILED) {
                         progressSyncRepository.refreshInProgress()
