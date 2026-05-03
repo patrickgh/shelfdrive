@@ -49,6 +49,8 @@ internal class ShelfDriveSessionPolicy(
     fun availableSessionCommands(): SessionCommands {
         return MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
+            .add(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
+            .add(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
             .add(SessionCommand(AuthCommands.CMD_GET_AUTH_STATE, Bundle.EMPTY))
             .add(SessionCommand(AuthCommands.CMD_LOGIN, Bundle.EMPTY))
             .add(SessionCommand(AuthCommands.CMD_LOGOUT, Bundle.EMPTY))
@@ -72,12 +74,12 @@ internal class ShelfDriveSessionPolicy(
     fun mediaButtonPreferences(): List<CommandButton> {
         return listOf(
             CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+                .setSessionCommand(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
                 .setDisplayName(context.getString(R.string.media_action_rewind_15))
                 .setSlots(CommandButton.SLOT_BACK)
                 .build(),
             CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+                .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
                 .setDisplayName(context.getString(R.string.media_action_forward_15))
                 .setSlots(CommandButton.SLOT_FORWARD)
                 .build(),
@@ -87,5 +89,10 @@ internal class ShelfDriveSessionPolicy(
                 .setSlots(CommandButton.SLOT_OVERFLOW)
                 .build(),
         )
+    }
+
+    companion object {
+        const val CMD_SEEK_BACK_15 = "io.shelfdrive.app.media3.SEEK_BACK_15"
+        const val CMD_SEEK_FORWARD_15 = "io.shelfdrive.app.media3.SEEK_FORWARD_15"
     }
 }

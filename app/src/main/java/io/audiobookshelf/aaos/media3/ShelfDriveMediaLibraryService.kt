@@ -323,6 +323,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             args: Bundle,
         ): ListenableFuture<SessionResult> {
             return when (customCommand.customAction) {
+                ShelfDriveSessionPolicy.CMD_SEEK_BACK_15 -> serviceFuture(customCommand.customAction) {
+                    player.seekBack()
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                ShelfDriveSessionPolicy.CMD_SEEK_FORWARD_15 -> serviceFuture(customCommand.customAction) {
+                    player.seekForward()
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
                 AuthCommands.CMD_GET_AUTH_STATE -> serviceFuture(customCommand.customAction) {
                     val snapshot = authRepository.bootstrap()
                     updateAuthSnapshot(snapshot)
