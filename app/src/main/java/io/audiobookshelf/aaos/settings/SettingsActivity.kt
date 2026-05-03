@@ -15,9 +15,9 @@ import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.auth.AuthStatus
-import io.audiobookshelf.aaos.browser.AudiobookshelfBrowserService
 import io.audiobookshelf.aaos.cache.CacheCommands
 import io.audiobookshelf.aaos.cache.CacheSnapshot
+import io.audiobookshelf.aaos.media3.ShelfDriveMediaLibraryService
 import io.audiobookshelf.aaos.sync.SyncCommands
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
@@ -121,7 +121,7 @@ class SettingsActivity : AppCompatActivity() {
 
         mediaBrowser = MediaBrowserCompat(
             this,
-            ComponentName(this, AudiobookshelfBrowserService::class.java),
+            ComponentName(this, ShelfDriveMediaLibraryService::class.java),
             connectionCallback,
             null,
         )

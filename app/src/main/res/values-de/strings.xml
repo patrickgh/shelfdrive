@@ -42,6 +42,9 @@
     <string name="settings_clear_cache_summary_usage">Verwendet aktuell: %1$s</string>
     <string name="settings_clear_cache_summary_scope">Entfernt Katalogdaten, Coverbilder und lokal zwischengespeicherten Fortschritt. Die Anmeldung bleibt erhalten.</string>
     <string name="settings_clear_cache_summary_cleared">Zuletzt geleert: %1$s</string>
+    <string name="media_action_rewind_15">15 Sekunden zurück</string>
+    <string name="media_action_forward_15">15 Sekunden vor</string>
+    <string name="media_action_playback_speed">Abspielgeschwindigkeit</string>
     <string name="settings_library_count_unknown">Noch keine Katalogdaten</string>
     <string name="settings_catalog_counts">%1$d Bibliotheken · %2$d Hörbücher · %3$d Autoren</string>
     <string name="settings_catalog_last_updated">Zuletzt aktualisiert: %1$s</string>

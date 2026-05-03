@@ -43,6 +43,9 @@
     <string name="settings_clear_cache_summary_usage">Currently used: %1$s</string>
     <string name="settings_clear_cache_summary_scope">Removes catalog data, cover art, and locally cached progress. The login remains saved.</string>
     <string name="settings_clear_cache_summary_cleared">Last cleared: %1$s</string>
+    <string name="media_action_rewind_15">Back 15 seconds</string>
+    <string name="media_action_forward_15">Forward 15 seconds</string>
+    <string name="media_action_playback_speed">Playback speed</string>
     <string name="settings_library_count_unknown">No catalog data yet</string>
     <string name="settings_catalog_counts">%1$d libraries · %2$d audiobooks · %3$d authors</string>
     <string name="settings_catalog_last_updated">Last updated: %1$s</string>

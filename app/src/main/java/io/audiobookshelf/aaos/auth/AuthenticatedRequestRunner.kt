@@ -47,7 +47,12 @@ class AuthenticatedRequestRunner(
     }
 
     private suspend fun refreshContext(cause: ApiException): AuthenticatedRequestContext {
-        val snapshot = authRepository.bootstrap()
+        val snapshot = authRepository.login(
+            requestedBaseUrl = null,
+            requestedUsername = null,
+            requestedPassword = null,
+        ).takeIf { it.isAuthenticated }
+            ?: authRepository.bootstrap()
         if (!snapshot.isAuthenticated) {
             throw AuthenticationRequiredException(
                 message = snapshot.statusMessage ?: "Sitzung abgelaufen. Bitte erneut anmelden.",
