@@ -5,12 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.app.PendingIntent
-import io.audiobookshelf.aaos.browser.AudiobookshelfBrowserService
+import io.audiobookshelf.aaos.media3.ShelfDriveMediaLibraryService
 import io.audiobookshelf.aaos.settings.SettingsActivity
 
 object MediaHostIntentFactory {
     fun createMediaHostIntent(context: Context): Intent? {
-        val mediaComponent = ComponentName(context, AudiobookshelfBrowserService::class.java).flattenToString()
+        val mediaComponent = ComponentName(context, ShelfDriveMediaLibraryService::class.java).flattenToString()
 
         val v2Intent = Intent(ACTION_MEDIA_TEMPLATE_V2)
             .putExtra(EXTRA_MEDIA_COMPONENT, mediaComponent)

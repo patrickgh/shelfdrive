@@ -131,6 +131,9 @@ interface MediaProgressDao {
 
     @Query("SELECT * FROM media_progress WHERE bookId = :bookId LIMIT 1")
     suspend fun getByBookId(bookId: String): MediaProgressEntity?
+
+    @Query("SELECT * FROM media_progress WHERE pendingUpload = 1 ORDER BY lastUpdateAt ASC")
+    suspend fun getPendingUploads(): List<MediaProgressEntity>
 }
 
 @Dao

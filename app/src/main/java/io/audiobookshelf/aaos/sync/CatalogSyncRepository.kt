@@ -58,6 +58,15 @@ class CatalogSyncRepository(
             }
         } catch (exception: IOException) {
             Log.w(TAG, "Sync failed due to network or parsing error.", exception)
+            if (exception !is AuthenticationRequiredException && previous.lastSyncedAt != null) {
+                val staleButUsable = previous.copy(
+                    status = if (previous.status == SyncStatus.FAILED) SyncStatus.SUCCESS else previous.status,
+                    message = UserVisibleStatus.SERVER_UNREACHABLE,
+                    serverVersion = previous.serverVersion,
+                )
+                persistSyncState(staleButUsable)
+                return@withContext staleButUsable
+            }
             val failed = previous.copy(
                 status = SyncStatus.FAILED,
                 message = when (exception) {
