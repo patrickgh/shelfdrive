@@ -380,20 +380,50 @@ class AuthRepository(
                 session = session,
                 hasStoredPassword = true,
             )
-        } catch (exception: IOException) {
-            Log.w(TAG, "Silent re-authentication failed.", exception)
-            storage.save(
-                stored.copy(
+        } catch (exception: ApiException) {
+            if (exception.statusCode == 401) {
+                storage.save(
+                    stored.copy(
+                        baseUrl = baseUrl,
+                        username = username,
+                        accessToken = null,
+                        refreshToken = null,
+                    ),
+                )
+                return AuthSnapshot(
+                    status = AuthStatus.SESSION_EXPIRED,
                     baseUrl = baseUrl,
                     username = username,
-                    accessToken = null,
-                    refreshToken = null,
-                ),
+                    hasStoredPassword = true,
+                )
+            }
+            Log.w(TAG, "Silent re-authentication failed with API error ${exception.statusCode}. Keeping cached session alive.", exception)
+            accountRegistry?.upsert(
+                username = username,
+                baseUrl = baseUrl,
+                accessToken = stored.accessToken,
+                serverVersion = null,
             )
             AuthSnapshot(
-                status = AuthStatus.SESSION_EXPIRED,
+                status = AuthStatus.AUTHENTICATED,
                 baseUrl = baseUrl,
                 username = username,
+                statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
+                hasStoredPassword = true,
+            )
+        } catch (exception: IOException) {
+            Log.w(TAG, "Silent re-authentication failed due to IO error. Keeping cached session alive.", exception)
+            accountRegistry?.upsert(
+                username = username,
+                baseUrl = baseUrl,
+                accessToken = stored.accessToken,
+                serverVersion = null,
+            )
+            AuthSnapshot(
+                status = AuthStatus.AUTHENTICATED,
+                baseUrl = baseUrl,
+                username = username,
+                statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
                 hasStoredPassword = true,
             )
         }

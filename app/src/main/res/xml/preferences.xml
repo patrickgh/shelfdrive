@@ -6,11 +6,6 @@
         android:title="@string/settings_category_connection">
 
         <Preference
-            android:key="connection_status"
-            android:title="@string/settings_connection_status_title"
-            android:summary="@string/settings_connection_status_initial" />
-
-        <Preference
             android:key="auth_status"
             android:title="@string/settings_auth_status_title"
             android:summary="@string/settings_auth_status_logged_out" />

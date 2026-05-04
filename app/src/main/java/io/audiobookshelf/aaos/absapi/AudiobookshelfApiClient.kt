@@ -48,10 +48,34 @@ class AudiobookshelfApiClient(
         accessToken: String,
         fallbackUsername: String?,
     ): AuthorizationState {
+        return authorizeWithPath(
+            baseUrl = baseUrl,
+            accessToken = accessToken,
+            fallbackUsername = fallbackUsername,
+            path = "/api/authorize",
+        ) {
+            authorizeWithPath(
+                baseUrl = baseUrl,
+                accessToken = accessToken,
+                fallbackUsername = fallbackUsername,
+                path = "/api/me",
+            ) {
+                validateTokenWithLibraries(baseUrl, accessToken, fallbackUsername)
+            }
+        }
+    }
+
+    private suspend fun authorizeWithPath(
+        baseUrl: String,
+        accessToken: String,
+        fallbackUsername: String?,
+        path: String,
+        onNotFound: suspend () -> AuthorizationState,
+    ): AuthorizationState {
         val response = httpClient.execute(
             baseUrl = baseUrl,
             request = HttpRequest(
-                path = "/api/me",
+                path = path,
                 method = "GET",
                 headers = mapOf("Authorization" to "Bearer $accessToken"),
                 retryProfile = RetryProfile.FOREGROUND_IDEMPOTENT,
@@ -73,7 +97,7 @@ class AudiobookshelfApiClient(
                 session = null,
             )
 
-            HttpURLConnection.HTTP_NOT_FOUND -> validateTokenWithLibraries(baseUrl, accessToken, fallbackUsername)
+            HttpURLConnection.HTTP_NOT_FOUND -> onNotFound()
             else -> throw ApiException(response.statusCode, extractErrorMessage(response.body))
         }
     }

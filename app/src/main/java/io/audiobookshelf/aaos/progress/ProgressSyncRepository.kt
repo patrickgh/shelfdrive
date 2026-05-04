@@ -44,16 +44,23 @@ class ProgressSyncRepository(
     }
 
     suspend fun pushProgress(snapshot: PlaybackProgressSnapshot) = withContext(Dispatchers.IO) {
+        val pendingProgress = saveLocalProgress(snapshot, pendingUpload = true)
+            ?: return@withContext false
         try {
             authenticatedRequestRunner.execute { context ->
-                pushProgressOnce(snapshot, context)
+                uploadProgress(pendingProgress, context)
             }
+            true
         } catch (exception: AuthenticationRequiredException) {
-            return@withContext false
+            false
+        } catch (exception: IOException) {
+            Log.w(TAG, "Progress upload deferred for ${snapshot.bookId}.", exception)
+            true
         }
     }
 
     private suspend fun refreshInProgressOnce(context: AuthenticatedRequestContext) {
+        flushPendingUploads(context)
         val items = apiClient.getItemsInProgress(context.baseUrl, context.accessToken)
         val progressEntries = mutableListOf<MediaProgressEntity>()
         items.forEach { item ->
@@ -72,18 +79,23 @@ class ProgressSyncRepository(
         }
 
         val knownProgressEntries = progressEntries.onlyForKnownBooks()
+        val pendingProgressEntries = database.mediaProgressDao().getPendingUploads().onlyForKnownBooks()
+        val mergedEntries = (knownProgressEntries + pendingProgressEntries)
+            .associateBy { it.bookId }
+            .values
+            .toList()
         database.withTransaction {
             database.mediaProgressDao().clearAll()
-            if (knownProgressEntries.isNotEmpty()) {
-                database.mediaProgressDao().upsertAll(knownProgressEntries)
+            if (mergedEntries.isNotEmpty()) {
+                database.mediaProgressDao().upsertAll(mergedEntries)
             }
         }
     }
 
-    private suspend fun pushProgressOnce(
+    private suspend fun saveLocalProgress(
         snapshot: PlaybackProgressSnapshot,
-        context: AuthenticatedRequestContext,
-    ): Boolean {
+        pendingUpload: Boolean,
+    ): MediaProgressEntity? {
         val existing = database.mediaProgressDao().getByBookId(snapshot.bookId)
         val durationMs = snapshot.durationMs ?: existing?.durationMs
         val progressFraction = if (durationMs != null && durationMs > 0L) {
@@ -93,41 +105,60 @@ class ProgressSyncRepository(
         }?.coerceIn(0.0, 1.0)
 
         val now = System.currentTimeMillis()
+        if (!database.bookDao().existsById(snapshot.bookId)) {
+            Log.w(TAG, "Skipping local progress cache for unknown book ${snapshot.bookId}")
+            return null
+        }
+        val entity = MediaProgressEntity(
+            bookId = snapshot.bookId,
+            currentTimeMs = snapshot.currentTimeMs,
+            durationMs = durationMs,
+            progressFraction = progressFraction,
+            isFinished = snapshot.isFinished,
+            hideFromContinueListening = snapshot.isFinished,
+            lastUpdateAt = now,
+            startedAt = existing?.startedAt ?: now,
+            finishedAt = if (snapshot.isFinished) now else null,
+            pendingUpload = pendingUpload,
+        )
+        database.mediaProgressDao().upsert(entity)
+        return entity
+    }
+
+    private suspend fun uploadProgress(
+        progress: MediaProgressEntity,
+        context: AuthenticatedRequestContext,
+    ) {
         apiClient.updateMediaProgress(
             baseUrl = context.baseUrl,
             accessToken = context.accessToken,
-            itemId = snapshot.bookId,
+            itemId = progress.bookId,
             progressUpdate = MediaProgressUpdateRequest(
-                currentTimeMs = snapshot.currentTimeMs,
-                durationMs = durationMs,
-                progressFraction = progressFraction,
-                isFinished = snapshot.isFinished,
-                hideFromContinueListening = snapshot.isFinished,
-                startedAt = existing?.startedAt ?: now,
-                finishedAt = if (snapshot.isFinished) now else null,
+                currentTimeMs = progress.currentTimeMs,
+                durationMs = progress.durationMs,
+                progressFraction = progress.progressFraction,
+                isFinished = progress.isFinished,
+                hideFromContinueListening = progress.hideFromContinueListening,
+                startedAt = progress.startedAt,
+                finishedAt = progress.finishedAt,
             ),
         )
 
-        if (snapshot.isFinished) {
-            database.mediaProgressDao().deleteByBookId(snapshot.bookId)
-        } else if (database.bookDao().existsById(snapshot.bookId)) {
-            database.mediaProgressDao().upsert(
-                MediaProgressEntity(
-                    bookId = snapshot.bookId,
-                    currentTimeMs = snapshot.currentTimeMs,
-                    durationMs = durationMs,
-                    progressFraction = progressFraction,
-                    isFinished = false,
-                    hideFromContinueListening = false,
-                    lastUpdateAt = now,
-                    startedAt = existing?.startedAt ?: now,
-                    finishedAt = null,
-                ),
-            )
+        if (progress.isFinished) {
+            database.mediaProgressDao().deleteByBookId(progress.bookId)
         } else {
-            Log.w(TAG, "Skipping local progress cache for unknown book ${snapshot.bookId}")
+            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
         }
-        return true
+    }
+
+    private suspend fun flushPendingUploads(context: AuthenticatedRequestContext) {
+        database.mediaProgressDao().getPendingUploads().forEach { pending ->
+            runCatching {
+                uploadProgress(pending, context)
+            }.onFailure { exception ->
+                Log.w(TAG, "Pending progress upload still deferred for ${pending.bookId}.", exception)
+            }
+        }
     }
 
     private suspend fun List<MediaProgressEntity>.onlyForKnownBooks(): List<MediaProgressEntity> {
@@ -155,6 +186,7 @@ class ProgressSyncRepository(
             lastUpdateAt = fallbackLastUpdate ?: lastUpdateAt,
             startedAt = startedAt,
             finishedAt = finishedAt,
+            pendingUpload = false,
         )
     }
 

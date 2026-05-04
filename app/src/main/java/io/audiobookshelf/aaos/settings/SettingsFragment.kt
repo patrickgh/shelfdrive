@@ -38,8 +38,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
         configureEditablePreferences()
         configureActions()
         renderState(
-            serviceStatus = (activity as? SettingsActivity)?.currentServiceStatusSummary()
-                ?: getString(R.string.settings_connection_status_initial),
             commandChannelReady = (activity as? SettingsActivity)?.isCommandChannelReady() == true,
             authSnapshot = (activity as? SettingsActivity)?.currentAuthSnapshot()
                 ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
@@ -68,8 +66,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     override fun onResume() {
         super.onResume()
         renderState(
-            serviceStatus = (activity as? SettingsActivity)?.currentServiceStatusSummary()
-                ?: getString(R.string.settings_connection_status_initial),
             commandChannelReady = (activity as? SettingsActivity)?.isCommandChannelReady() == true,
             authSnapshot = (activity as? SettingsActivity)?.currentAuthSnapshot()
                 ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
@@ -88,7 +84,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     fun renderState(
-        serviceStatus: String,
         commandChannelReady: Boolean,
         authSnapshot: AuthSnapshot,
         syncSnapshot: SyncSnapshot,
@@ -111,7 +106,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             passwordInput = ""
         }
 
-        findPreference<Preference>(KEY_CONNECTION_STATUS)?.summary = serviceStatus
         renderFieldState()
         renderActionAvailability()
     }
@@ -294,8 +288,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
             AuthStatus.LOGIN_FAILED -> getString(R.string.settings_auth_status_login_failed)
             AuthStatus.LOGGED_OUT -> getString(R.string.settings_auth_status_logged_out)
         }
-        val message = currentAuthSnapshot.statusMessage?.takeIf { it.isNotBlank() } ?: return base
-        return "$base\n$message"
+        val parts = mutableListOf(base)
+        currentAuthSnapshot.statusMessage
+            ?.takeIf { it.isNotBlank() }
+            ?.let { parts += localizeStatusMessage(it) }
+        currentAuthSnapshot.serverVersion?.takeIf { it.isNotBlank() }?.let { version ->
+            parts += getString(R.string.settings_server_version_summary, version)
+        }
+        return parts.joinToString("\n")
     }
 
     private fun buildSyncSummary(): String {
@@ -308,7 +308,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         val parts = mutableListOf(base)
         if (currentSyncSnapshot.status == SyncStatus.FAILED) {
-            currentSyncSnapshot.message?.takeIf { it.isNotBlank() }?.let(parts::add)
+            currentSyncSnapshot.message
+                ?.takeIf { it.isNotBlank() }
+                ?.let { parts += localizeStatusMessage(it) }
         }
         return parts.joinToString("\n")
     }
@@ -338,6 +340,48 @@ class SettingsFragment : PreferenceFragmentCompat() {
             parts += getString(R.string.settings_catalog_stale_after_failed_sync)
         }
         return parts.joinToString("\n")
+    }
+
+    private fun localizeStatusMessage(message: String): String {
+        Regex("""Serverversion '(.+)' konnte nicht sauber ausgewertet werden\.""")
+            .matchEntire(message)
+            ?.let { return getString(R.string.status_server_version_unparseable, it.groupValues[1]) }
+        Regex("""Audiobookshelf (.+) wird in v1 nicht unterstützt\. Benötigt wird mindestens 2\.31\.0\.""")
+            .matchEntire(message)
+            ?.let { return getString(R.string.status_server_version_unsupported, it.groupValues[1]) }
+
+        return when (message) {
+            "Server momentan nicht erreichbar. Inhalte können veraltet sein." ->
+                getString(R.string.status_server_unreachable)
+            "Server nicht erreichbar. Der letzte Katalogstand bleibt verfügbar." ->
+                getString(R.string.status_catalog_sync_failed)
+            "Sitzung abgelaufen. Bitte erneut anmelden." ->
+                getString(R.string.status_session_expired)
+            "Serverversion konnte nicht verifiziert werden." ->
+                getString(R.string.status_server_version_unknown)
+            "URL, Benutzername und Passwort werden benötigt." ->
+                getString(R.string.status_login_fields_required)
+            "Login-Antwort enthält kein Zugriffstoken.",
+            "Login-Antwort enthaelt kein Zugriffstoken." ->
+                getString(R.string.status_login_missing_access_token)
+            "Refresh-Antwort enthaelt kein Zugriffstoken." ->
+                getString(R.string.status_refresh_missing_access_token)
+            "Server nicht erreichbar oder Antwort ungueltig." ->
+                getString(R.string.status_server_unreachable_or_invalid)
+            "Server-URL ist ungueltig." ->
+                getString(R.string.status_server_url_invalid)
+            "Server-URL muss mit https:// oder http:// beginnen." ->
+                getString(R.string.status_server_url_scheme_required)
+            "Server-URL enthaelt keinen Host." ->
+                getString(R.string.status_server_url_host_required)
+            "Server-URL darf keine Zugangsdaten enthalten." ->
+                getString(R.string.status_server_url_credentials_forbidden)
+            "Server-URL darf keine Query-Parameter oder Fragmente enthalten." ->
+                getString(R.string.status_server_url_query_forbidden)
+            "HTTP ist nur fuer lokale oder private Server erlaubt. Fuer oeffentliche Server bitte HTTPS verwenden." ->
+                getString(R.string.status_server_url_public_http_forbidden)
+            else -> message
+        }
     }
 
     private fun buildCacheSummary(): String {
@@ -392,7 +436,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     companion object {
-        private const val KEY_CONNECTION_STATUS = "connection_status"
         private const val KEY_AUTH_STATUS = "auth_status"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
