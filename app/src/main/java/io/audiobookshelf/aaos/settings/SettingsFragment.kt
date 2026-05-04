@@ -12,6 +12,7 @@ import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceGroup
 import androidx.core.content.ContextCompat
+import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.auth.AuthStatus
@@ -219,6 +220,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
         findPreference<Preference>(KEY_LIBRARY_COUNT)?.summary = buildCatalogSummary()
         findPreference<Preference>(KEY_RESYNC_ACTION)?.summary = buildSyncSummary()
         findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.summary = buildCacheSummary()
+        findPreference<Preference>(KEY_APP_VERSION)?.summary = getString(
+            R.string.settings_app_version_summary,
+            BuildConfig.VERSION_NAME,
+            BuildConfig.VERSION_CODE,
+        )
     }
 
     private fun renderActionAvailability() {
@@ -444,6 +450,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_ACCOUNT_ACTION = "account_action"
         private const val KEY_RESYNC_ACTION = "resync_action"
         private const val KEY_CLEAR_CACHE_ACTION = "clear_cache_action"
+        private const val KEY_APP_VERSION = "app_version"
 
         private const val STATE_SERVER_URL = "state_server_url"
         private const val STATE_USERNAME = "state_username"

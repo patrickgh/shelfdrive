@@ -7,11 +7,13 @@
 
         <Preference
             android:key="auth_status"
+            android:selectable="false"
             android:title="@string/settings_auth_status_title"
             android:summary="@string/settings_auth_status_logged_out" />
 
         <Preference
             android:key="library_count"
+            android:selectable="false"
             android:title="@string/settings_library_count_title"
             android:summary="@string/settings_library_count_unknown" />
 
@@ -69,6 +71,12 @@
             android:key="clear_cache_action"
             android:title="@string/settings_clear_cache_title"
             android:summary="@string/settings_clear_cache_summary_initial" />
+
+        <Preference
+            android:key="app_version"
+            android:selectable="false"
+            android:title="@string/settings_app_version_title"
+            android:summary="@string/settings_app_version_unknown" />
     </PreferenceCategory>
 
 </PreferenceScreen>

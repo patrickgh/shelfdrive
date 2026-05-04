@@ -21,9 +21,9 @@ ShelfDrive connects an Android Automotive OS vehicle to a self-hosted
 audiobook library through the native AAOS media experience instead of shipping
 a custom player UI.
 
-The app is built as a system media source: browsing, search, now playing,
-transport controls, artwork, queue handling, and voice/media actions are
-provided through Android media APIs and rendered by the vehicle media host.
+The app is built as a Media3 library/session source: browsing, search, now
+playing, transport controls, artwork, queue handling, and voice/media actions
+are provided through Android media APIs and rendered by the vehicle media host.
 
 ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 
@@ -48,7 +48,7 @@ Current app metadata:
 
 - App name: `ShelfDrive`
 - Application ID: `io.shelfdrive.app`
-- Version: `0.1.0`
+- Version: `0.2.0`
 - Minimum SDK: `29`
 - Target SDK: `35`
 - Supported form factor: Android Automotive OS
@@ -62,9 +62,11 @@ Current app metadata:
 - Display server-provided audiobook covers and author images.
 - Search the local synced audiobook catalog from the AAOS media host.
 - Play MP3 and M4B audiobooks through ExoPlayer.
-- Use native AAOS now-playing, queue, skip, seek, speed, and media controls.
+- Use native AAOS now-playing, skip, seek, speed, and media controls.
+- Cycle playback speed from the now-playing controls through AAOS-supported values.
 - Sync playback progress back to Audiobookshelf while playback is active.
 - Keep Audiobookshelf as the source of truth for listening progress.
+- Restore the last local playback state after app or vehicle restarts.
 - Optionally rewind 15 seconds when pausing, so resume starts with a short recap.
 - Configure server URL, username, password, connection state, sync state, and cache actions in Settings.
 - Cache catalog data and artwork locally for faster browsing after a successful sync.
@@ -138,6 +140,7 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Login/logout action.
 - 15-second rewind-on-pause toggle.
 - Cache usage and clear-cache action.
+- App version.
 
 ## Cache Policy
 
@@ -160,8 +163,9 @@ under storage pressure. App uninstall removes all local app data.
 
 ShelfDrive is built around Android media primitives:
 
-- `MediaBrowserServiceCompat` exposes the browsable audiobook catalog.
-- `MediaSessionCompat` publishes metadata, queue, playback state, and transport actions.
+- `MediaLibraryService` exposes the browsable audiobook catalog.
+- Media3 `MediaSession` publishes metadata, playback state, and transport actions.
+- Media3 custom commands provide 15-second seek controls and playback-speed cycling.
 - ExoPlayer handles audiobook playback.
 - Room stores the local catalog and progress cache.
 - AndroidX Security stores credentials and tokens.
@@ -230,12 +234,13 @@ app/src/main/java/io/audiobookshelf/aaos/absapi      Audiobookshelf API client
 app/src/main/java/io/audiobookshelf/aaos/account     Android account integration
 app/src/main/java/io/audiobookshelf/aaos/artwork     Artwork content provider
 app/src/main/java/io/audiobookshelf/aaos/auth        Authentication and encrypted storage
-app/src/main/java/io/audiobookshelf/aaos/browser     Media browser service and catalog tree
+app/src/main/java/io/audiobookshelf/aaos/browser     Browse node IDs and catalog repository
 app/src/main/java/io/audiobookshelf/aaos/cache       Local cache handling
 app/src/main/java/io/audiobookshelf/aaos/catalog     Room database entities and DAOs
-app/src/main/java/io/audiobookshelf/aaos/playback    ExoPlayer playback and queue handling
+app/src/main/java/io/audiobookshelf/aaos/host        Media host launch intents
+app/src/main/java/io/audiobookshelf/aaos/media3      Media3 library/session service and catalog
+app/src/main/java/io/audiobookshelf/aaos/playback    Playback resolution, queue math, and state storage
 app/src/main/java/io/audiobookshelf/aaos/progress    Progress synchronization
-app/src/main/java/io/audiobookshelf/aaos/session     Media session integration
 app/src/main/java/io/audiobookshelf/aaos/settings    Settings activity
 app/src/main/java/io/audiobookshelf/aaos/sync        Catalog synchronization
 ```
