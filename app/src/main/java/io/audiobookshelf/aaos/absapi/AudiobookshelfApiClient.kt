@@ -321,7 +321,7 @@ class AudiobookshelfApiClient(
                 add(
                     ProgressItemSummary(
                         bookId = item.optString("id"),
-                        progressLastUpdateAt = parseIsoDate(item.optString("progressLastUpdate")),
+                        progressLastUpdateAt = parseAbsTimestamp(item.opt("progressLastUpdate")),
                         title = metadata?.optString("title").takeIf { !it.isNullOrBlank() },
                     ),
                 )
@@ -350,9 +350,9 @@ class AudiobookshelfApiClient(
             progressFraction = root.optDouble("progress").takeIf { !it.isNaN() },
             isFinished = root.optBoolean("isFinished"),
             hideFromContinueListening = root.optBoolean("hideFromContinueListening"),
-            startedAt = parseIsoDate(root.optString("startedAt")),
-            finishedAt = parseIsoDate(root.optString("finishedAt")),
-            lastUpdateAt = parseIsoDate(root.optString("lastUpdate")) ?: System.currentTimeMillis(),
+            startedAt = parseAbsTimestamp(root.opt("startedAt")),
+            finishedAt = parseAbsTimestamp(root.opt("finishedAt")),
+            lastUpdateAt = parseAbsTimestamp(root.opt("lastUpdate")) ?: System.currentTimeMillis(),
         )
     }
 
@@ -363,15 +363,7 @@ class AudiobookshelfApiClient(
         itemId: String,
         progressUpdate: MediaProgressUpdateRequest,
     ) {
-        val body = JSONObject().apply {
-            put("currentTime", progressUpdate.currentTimeMs / 1000.0)
-            progressUpdate.durationMs?.let { put("duration", it / 1000.0) }
-            progressUpdate.progressFraction?.let { put("progress", it) }
-            put("isFinished", progressUpdate.isFinished)
-            put("hideFromContinueListening", progressUpdate.hideFromContinueListening)
-            progressUpdate.startedAt?.let { put("startedAt", isoDate(it)) }
-            progressUpdate.finishedAt?.let { put("finishedAt", isoDate(it)) }
-        }.toString()
+        val body = mediaProgressUpdateRequestBody(progressUpdate)
 
         val response = httpClient.execute(
             baseUrl = baseUrl,
@@ -591,22 +583,44 @@ class AudiobookshelfApiClient(
         }
     }
 
-    private fun parseIsoDate(value: String?): Long? {
-        val rawValue = value?.trim().orEmpty()
+    private fun parseAbsTimestamp(value: Any?): Long? {
+        if (value == null || value == JSONObject.NULL) {
+            return null
+        }
+        if (value is Number) {
+            return value.toLong().takeIf { it >= 0L }
+        }
+
+        val rawValue = value.toString().trim()
         if (rawValue.isBlank()) {
             return null
+        }
+        rawValue.toLongOrNull()?.let { timestamp ->
+            return timestamp.takeIf { it >= 0L }
         }
         return runCatching {
             java.time.Instant.parse(rawValue).toEpochMilli()
         }.getOrNull()
     }
 
-    private fun isoDate(epochMillis: Long): String {
-        return java.time.Instant.ofEpochMilli(epochMillis).toString()
-    }
-
     companion object {
         private const val MAX_ERROR_MESSAGE_LENGTH = 240
+    }
+}
+
+internal fun mediaProgressUpdateRequestBody(progressUpdate: MediaProgressUpdateRequest): String {
+    return JSONObject(mediaProgressUpdateRequestFields(progressUpdate)).toString()
+}
+
+internal fun mediaProgressUpdateRequestFields(progressUpdate: MediaProgressUpdateRequest): Map<String, Any> {
+    return buildMap {
+        put("currentTime", progressUpdate.currentTimeMs / 1000.0)
+        progressUpdate.durationMs?.let { put("duration", it / 1000.0) }
+        progressUpdate.progressFraction?.let { put("progress", it) }
+        put("isFinished", progressUpdate.isFinished)
+        put("hideFromContinueListening", progressUpdate.hideFromContinueListening)
+        progressUpdate.startedAt?.let { put("startedAt", it) }
+        progressUpdate.finishedAt?.let { put("finishedAt", it) }
     }
 }
 
