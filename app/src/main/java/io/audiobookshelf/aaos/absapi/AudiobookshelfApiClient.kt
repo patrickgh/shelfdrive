@@ -1,5 +1,6 @@
 package io.audiobookshelf.aaos.absapi
 
+import io.audiobookshelf.aaos.BuildConfig
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -544,7 +545,7 @@ class AudiobookshelfApiClient(
                 "deviceInfo",
                 JSONObject()
                     .put("clientName", "ShelfDrive")
-                    .put("clientVersion", "0.2.1")
+                    .put("clientVersion", BuildConfig.VERSION_NAME)
                     .put("manufacturer", "Android Automotive")
                     .put("model", "AAOS"),
             )

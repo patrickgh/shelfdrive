@@ -27,6 +27,7 @@ import androidx.media3.session.SessionResult
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.account.AudiobookshelfAccountContract
 import io.audiobookshelf.aaos.account.AudiobookshelfAccountRegistry
 import io.audiobookshelf.aaos.auth.AuthCommands
@@ -633,7 +634,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private fun configureAuthenticatedPlayback(accessToken: String) {
         activeAccessToken = accessToken
-        httpDataSourceFactory.setUserAgent("ShelfDrive/0.2.1")
+        httpDataSourceFactory.setUserAgent("ShelfDrive/${BuildConfig.VERSION_NAME}")
         httpDataSourceFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
     }
 
