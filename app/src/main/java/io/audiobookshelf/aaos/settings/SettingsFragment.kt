@@ -17,6 +17,10 @@ import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.auth.AuthStatus
 import io.audiobookshelf.aaos.cache.CacheSnapshot
+import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadSnapshot
+import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadStatus
+import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
+import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsSnapshot
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
 import java.text.DateFormat
@@ -29,6 +33,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private var currentAuthSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
     private var currentSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
     private var currentCacheSnapshot: CacheSnapshot = CacheSnapshot()
+    private var currentDiagnosticsSnapshot: StartupDiagnosticsSnapshot = StartupDiagnosticsSnapshot()
+    private var currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot()
     private var isCommandChannelReady: Boolean = false
     private var isLoginInProgress: Boolean = false
 
@@ -46,6 +52,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 ?: SyncSnapshot(status = SyncStatus.IDLE),
             cacheSnapshot = (activity as? SettingsActivity)?.currentCacheSnapshot()
                 ?: CacheSnapshot(),
+            diagnosticsSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsSnapshot()
+                ?: StartupDiagnosticsSnapshot(),
+            diagnosticsUploadSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()
+                ?: DiagnosticsUploadSnapshot(),
             loginInProgress = (activity as? SettingsActivity)?.isLoginInProgress() == true,
         )
     }
@@ -74,6 +84,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 ?: SyncSnapshot(status = SyncStatus.IDLE),
             cacheSnapshot = (activity as? SettingsActivity)?.currentCacheSnapshot()
                 ?: CacheSnapshot(),
+            diagnosticsSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsSnapshot()
+                ?: StartupDiagnosticsSnapshot(),
+            diagnosticsUploadSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()
+                ?: DiagnosticsUploadSnapshot(),
             loginInProgress = (activity as? SettingsActivity)?.isLoginInProgress() == true,
         )
     }
@@ -89,6 +103,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
         authSnapshot: AuthSnapshot,
         syncSnapshot: SyncSnapshot,
         cacheSnapshot: CacheSnapshot,
+        diagnosticsSnapshot: StartupDiagnosticsSnapshot,
+        diagnosticsUploadSnapshot: DiagnosticsUploadSnapshot,
         loginInProgress: Boolean,
     ) {
         isCommandChannelReady = commandChannelReady
@@ -96,6 +112,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
         currentAuthSnapshot = authSnapshot
         currentSyncSnapshot = syncSnapshot
         currentCacheSnapshot = cacheSnapshot
+        currentDiagnosticsSnapshot = diagnosticsSnapshot
+        currentDiagnosticsUploadSnapshot = diagnosticsUploadSnapshot
 
         if (!authSnapshot.baseUrl.isNullOrBlank()) {
             serverUrlInput = authSnapshot.baseUrl
@@ -183,6 +201,20 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 true
             }
         }
+
+        findPreference<EditTextPreference>(KEY_DIAGNOSTICS_UPLOAD_URL)?.apply {
+            text = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()?.uploadUrl.orEmpty()
+            setOnBindEditTextListener { editText ->
+                editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+                styleEditText(editText)
+            }
+            setOnPreferenceChangeListener { preference, newValue ->
+                val uploadUrl = (newValue as? String).orEmpty().trim()
+                (preference as EditTextPreference).text = uploadUrl
+                (activity as? SettingsActivity)?.updateDiagnosticsUploadUrl(uploadUrl)
+                true
+            }
+        }
     }
 
     private fun configureActions() {
@@ -204,6 +236,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             (activity as? SettingsActivity)?.performClearCache()
             true
         }
+
+        findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.setOnPreferenceClickListener {
+            (activity as? SettingsActivity)?.performDiagnosticsUpload()
+            true
+        }
     }
 
     private fun renderFieldState() {
@@ -220,6 +257,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
         findPreference<Preference>(KEY_LIBRARY_COUNT)?.summary = buildCatalogSummary()
         findPreference<Preference>(KEY_RESYNC_ACTION)?.summary = buildSyncSummary()
         findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.summary = buildCacheSummary()
+        findPreference<Preference>(KEY_STARTUP_DIAGNOSTICS)?.summary = buildStartupDiagnosticsSummary()
+        findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_URL)?.summary =
+            currentDiagnosticsUploadSnapshot.uploadUrl.ifBlank { getString(R.string.settings_diagnostics_upload_url_missing) }
+        findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.summary = buildDiagnosticsUploadSummary()
         findPreference<Preference>(KEY_APP_VERSION)?.summary = getString(
             R.string.settings_app_version_summary,
             BuildConfig.VERSION_NAME,
@@ -253,6 +294,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
             isCommandChannelReady && currentAuthSnapshot.status == AuthStatus.AUTHENTICATED
 
         findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.isEnabled = isCommandChannelReady
+
+        findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.isEnabled =
+            currentDiagnosticsUploadSnapshot.uploadUrl.isNotBlank() &&
+                currentDiagnosticsUploadSnapshot.lastUploadStatus != DiagnosticsUploadStatus.RUNNING
     }
 
     private fun maybeStartLoginAfterRequiredFieldsChanged() {
@@ -404,6 +449,59 @@ class SettingsFragment : PreferenceFragmentCompat() {
         return parts.joinToString("\n")
     }
 
+    private fun buildStartupDiagnosticsSummary(): String {
+        val parts = mutableListOf<String>()
+        currentDiagnosticsSnapshot.lastServiceStartedAt?.let { timestamp ->
+            parts += getString(R.string.settings_diagnostics_last_start, formatSyncTimestamp(timestamp))
+        } ?: run {
+            parts += getString(R.string.settings_diagnostics_no_start)
+        }
+
+        val restoreStatus = currentDiagnosticsSnapshot.lastRestoreStatus
+        if (restoreStatus != null) {
+            parts += getString(
+                R.string.settings_diagnostics_restore_status,
+                localizeRestoreStatus(restoreStatus),
+            )
+        }
+        currentDiagnosticsSnapshot.lastRestoreFinishedAt?.let { timestamp ->
+            parts += getString(R.string.settings_diagnostics_restore_finished, formatSyncTimestamp(timestamp))
+        }
+        currentDiagnosticsSnapshot.lastRestoreMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            parts += getString(R.string.settings_diagnostics_restore_message, message)
+        }
+        return parts.joinToString("\n")
+    }
+
+    private fun buildDiagnosticsUploadSummary(): String {
+        val status = currentDiagnosticsUploadSnapshot.lastUploadStatus
+        val parts = mutableListOf(
+            when (status) {
+                DiagnosticsUploadStatus.RUNNING -> getString(R.string.settings_diagnostics_upload_running)
+                DiagnosticsUploadStatus.SUCCESS -> getString(R.string.settings_diagnostics_upload_success)
+                DiagnosticsUploadStatus.FAILED -> getString(R.string.settings_diagnostics_upload_failed)
+                null -> getString(R.string.settings_diagnostics_upload_summary)
+            },
+        )
+        currentDiagnosticsUploadSnapshot.lastUploadFinishedAt?.let { timestamp ->
+            parts += getString(R.string.settings_diagnostics_upload_finished, formatSyncTimestamp(timestamp))
+        }
+        currentDiagnosticsUploadSnapshot.lastUploadMessage?.takeIf { it.isNotBlank() }?.let { message ->
+            parts += message
+        }
+        return parts.joinToString("\n")
+    }
+
+    private fun localizeRestoreStatus(status: PlaybackRestoreStatus): String {
+        return when (status) {
+            PlaybackRestoreStatus.RUNNING -> getString(R.string.settings_diagnostics_restore_running)
+            PlaybackRestoreStatus.SKIPPED -> getString(R.string.settings_diagnostics_restore_skipped)
+            PlaybackRestoreStatus.SUCCESS -> getString(R.string.settings_diagnostics_restore_success)
+            PlaybackRestoreStatus.FAILED -> getString(R.string.settings_diagnostics_restore_failed)
+            PlaybackRestoreStatus.TIMED_OUT -> getString(R.string.settings_diagnostics_restore_timed_out)
+        }
+    }
+
     private fun formatSyncTimestamp(timestamp: Long): String {
         return DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
             .format(Date(timestamp))
@@ -450,6 +548,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_ACCOUNT_ACTION = "account_action"
         private const val KEY_RESYNC_ACTION = "resync_action"
         private const val KEY_CLEAR_CACHE_ACTION = "clear_cache_action"
+        private const val KEY_STARTUP_DIAGNOSTICS = "startup_diagnostics"
+        private const val KEY_DIAGNOSTICS_UPLOAD_URL = "diagnostics_upload_url"
+        private const val KEY_DIAGNOSTICS_UPLOAD_ACTION = "diagnostics_upload_action"
         private const val KEY_APP_VERSION = "app_version"
 
         private const val STATE_SERVER_URL = "state_server_url"

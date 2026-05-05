@@ -38,6 +38,9 @@ import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.cache.CacheCommands
 import io.audiobookshelf.aaos.cache.CacheRepository
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
+import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
+import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
+import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
 import io.audiobookshelf.aaos.host.MediaHostIntentFactory
 import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
 import io.audiobookshelf.aaos.playback.PlaybackPreferences
@@ -55,12 +58,15 @@ import io.audiobookshelf.aaos.sync.SyncCommands
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 
 @OptIn(UnstableApi::class)
@@ -75,6 +81,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var playbackStateStorage: PlaybackStateStorage
     private lateinit var progressSyncRepository: ProgressSyncRepository
     private lateinit var cacheRepository: CacheRepository
+    private lateinit var diagnosticsStorage: StartupDiagnosticsStorage
+    private lateinit var diagnosticEventLogger: DiagnosticEventLogger
     private lateinit var mediaCatalog: ShelfDriveMediaCatalog
     private lateinit var sessionPolicy: ShelfDriveSessionPolicy
     private lateinit var player: ExoPlayer
@@ -118,6 +126,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             database = database,
         )
         playbackStateStorage = PlaybackStateStorage(this)
+        diagnosticsStorage = StartupDiagnosticsStorage(this)
+        diagnosticEventLogger = DiagnosticEventLogger(this)
+        diagnosticsStorage.recordServiceStarted()
+        diagnosticEventLogger.record("service_started")
 
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSourceFactory))
@@ -146,10 +158,18 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             val initialAuth = authRepository.bootstrap()
             updateAuthSnapshot(initialAuth)
             updateSyncSnapshot(syncRepository.loadSnapshot())
+            diagnosticEventLogger.record("auth_bootstrap", mapOf("status" to initialAuth.status.name))
             if (initialAuth.isAuthenticated) {
-                restoreStoredPlayback()
+                restoreStoredPlaybackWithTimeout()
                 val snapshot = syncRepository.syncIfStale()
                 updateSyncSnapshot(snapshot)
+                diagnosticEventLogger.record(
+                    "startup_sync_finished",
+                    mapOf(
+                        "status" to snapshot.status.name,
+                        "books" to snapshot.bookCount.toString(),
+                    ),
+                )
                 if (snapshot.status != SyncStatus.FAILED) {
                     progressSyncRepository.refreshInProgress()
                 }
@@ -229,6 +249,14 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             TAG,
             "Playback failed for book=${activeBook?.bookId} track=${activeTrack?.contentUrl?.substringBefore("?")}",
             error,
+        )
+        diagnosticEventLogger.record(
+            "player_error",
+            mapOf(
+                "errorCode" to error.errorCodeName,
+                "message" to error.message,
+                "bookActive" to (activeBook != null).toString(),
+            ),
         )
         if (error.isUnauthorizedResponse()) {
             recoverPlaybackAfterUnauthorized()
@@ -456,10 +484,43 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         return playbackRepository.resolveBook(book.id)
     }
 
-    private suspend fun restoreStoredPlayback() {
-        val stored = playbackStateStorage.load() ?: return
+    private suspend fun restoreStoredPlaybackWithTimeout() {
+        val stored = playbackStateStorage.load()
+        if (stored == null) {
+            diagnosticsStorage.recordRestoreFinished(PlaybackRestoreStatus.SKIPPED, "No stored playback state.")
+            diagnosticEventLogger.record("restore_skipped", mapOf("reason" to "no_stored_state"))
+            return
+        }
+        diagnosticsStorage.recordRestoreStarted(stored.bookId)
+        diagnosticEventLogger.record("restore_started", mapOf("hasBookId" to "true"))
+        val restoreCompleted = CompletableDeferred<Unit>()
+        val restoreJob = serviceScope.launch {
+            try {
+                restoreStoredPlayback(stored)
+            } finally {
+                restoreCompleted.complete(Unit)
+            }
+        }
+        val completedInTime = withTimeoutOrNull(RESTORE_TIMEOUT_MS) {
+            restoreCompleted.await()
+            true
+        } == true
+        if (!completedInTime) {
+            diagnosticsStorage.recordRestoreFinished(
+                PlaybackRestoreStatus.TIMED_OUT,
+                "Stored playback restore timed out after ${RESTORE_TIMEOUT_MS}ms.",
+            )
+            restoreJob.cancel()
+            diagnosticEventLogger.record("restore_timed_out")
+            Log.w(TAG, "Stored playback restore timed out for book=${stored.bookId}.")
+        }
+    }
+
+    private suspend fun restoreStoredPlayback(stored: StoredPlaybackState) {
         if (System.currentTimeMillis() - stored.updatedAt > RESTORE_MAX_AGE_MS) {
             playbackStateStorage.clear()
+            diagnosticsStorage.recordRestoreFinished(PlaybackRestoreStatus.SKIPPED, "Stored playback state is too old.")
+            diagnosticEventLogger.record("restore_skipped", mapOf("reason" to "stored_state_too_old"))
             return
         }
         runCatching {
@@ -468,10 +529,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 resolved.playback.queue,
                 stored.positionMs,
             )
-                activeBook = resolved.playback
-                configureAuthenticatedPlayback(resolved.accessToken)
-                transientPlaybackRetryAttempt = 0
-                player.setMediaItems(
+            activeBook = resolved.playback
+            configureAuthenticatedPlayback(resolved.accessToken)
+            transientPlaybackRetryAttempt = 0
+            player.setMediaItems(
                 resolved.playback.toMedia3PlayableItems(),
                 startPosition.trackIndex,
                 startPosition.positionMs,
@@ -482,8 +543,24 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             player.prepare()
             player.playWhenReady = false
             saveActivePlaybackState(wasPlaying = stored.wasPlaying)
+            diagnosticsStorage.recordRestoreFinished(PlaybackRestoreStatus.SUCCESS)
+            diagnosticEventLogger.record("restore_success")
             Log.i(TAG, "Restored playback state for book=${stored.bookId} at ${stored.positionMs}ms.")
         }.onFailure { exception ->
+            if (exception is CancellationException) {
+                throw exception
+            }
+            diagnosticsStorage.recordRestoreFinished(
+                PlaybackRestoreStatus.FAILED,
+                exception.message ?: exception::class.java.simpleName,
+            )
+            diagnosticEventLogger.record(
+                "restore_failed",
+                mapOf(
+                    "exception" to exception::class.java.simpleName,
+                    "message" to exception.message,
+                ),
+            )
             Log.w(TAG, "Stored playback restore failed for book=${stored.bookId}.", exception)
         }
     }
@@ -783,6 +860,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         private const val TAG = "ShelfDriveMedia3"
         private const val SEEK_INCREMENT_MS = 15_000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
+        private const val RESTORE_TIMEOUT_MS = 8_000L
         private const val RESTORE_MAX_AGE_MS = 14L * 24L * 60L * 60L * 1_000L
         private val TRANSIENT_PLAYBACK_RETRY_DELAYS_MS = listOf(1_000L, 3_000L, 8_000L, 15_000L)
         private val TRANSIENT_HTTP_STATUS_CODES = setOf(502, 503, 504)

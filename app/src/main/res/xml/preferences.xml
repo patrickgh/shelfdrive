@@ -79,4 +79,26 @@
             android:summary="@string/settings_app_version_unknown" />
     </PreferenceCategory>
 
+    <PreferenceCategory
+        android:key="diagnostics_category"
+        android:title="@string/settings_category_diagnostics">
+
+        <Preference
+            android:key="startup_diagnostics"
+            android:selectable="false"
+            android:title="@string/settings_diagnostics_title"
+            android:summary="@string/settings_diagnostics_no_start" />
+
+        <EditTextPreference
+            android:key="diagnostics_upload_url"
+            android:persistent="false"
+            android:title="@string/settings_diagnostics_upload_url_title"
+            android:summary="@string/settings_diagnostics_upload_url_missing" />
+
+        <Preference
+            android:key="diagnostics_upload_action"
+            android:title="@string/settings_diagnostics_upload_title"
+            android:summary="@string/settings_diagnostics_upload_summary" />
+    </PreferenceCategory>
+
 </PreferenceScreen>

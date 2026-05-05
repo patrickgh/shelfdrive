@@ -6,6 +6,7 @@
     <string name="settings_category_account">Account</string>
     <string name="settings_category_playback">Playback</string>
     <string name="settings_category_storage">Storage</string>
+    <string name="settings_category_diagnostics">Diagnostics</string>
     <string name="settings_key_rewind_on_pause" translatable="false">rewind_on_pause</string>
     <string name="settings_auth_status_title">Account</string>
     <string name="settings_auth_status_logged_out">Not signed in</string>
@@ -37,6 +38,25 @@
     <string name="settings_clear_cache_summary_usage">Currently used: %1$s</string>
     <string name="settings_clear_cache_summary_scope">Removes catalog data, cover art, and locally cached progress. The login remains saved.</string>
     <string name="settings_clear_cache_summary_cleared">Last cleared: %1$s</string>
+    <string name="settings_diagnostics_title">Diagnostics</string>
+    <string name="settings_diagnostics_no_start">No service start recorded yet.</string>
+    <string name="settings_diagnostics_last_start">Last service start: %1$s</string>
+    <string name="settings_diagnostics_restore_status">Playback restore: %1$s</string>
+    <string name="settings_diagnostics_restore_finished">Restore finished: %1$s</string>
+    <string name="settings_diagnostics_restore_message">Details: %1$s</string>
+    <string name="settings_diagnostics_restore_running">running</string>
+    <string name="settings_diagnostics_restore_skipped">skipped</string>
+    <string name="settings_diagnostics_restore_success">successful</string>
+    <string name="settings_diagnostics_restore_failed">failed</string>
+    <string name="settings_diagnostics_restore_timed_out">timed out</string>
+    <string name="settings_diagnostics_upload_url_title">Upload URL</string>
+    <string name="settings_diagnostics_upload_url_missing">Not configured</string>
+    <string name="settings_diagnostics_upload_title">Send diagnostic package</string>
+    <string name="settings_diagnostics_upload_summary">Creates a ZIP with app diagnostics and uploads it.</string>
+    <string name="settings_diagnostics_upload_running">Upload running...</string>
+    <string name="settings_diagnostics_upload_success">Last upload successful.</string>
+    <string name="settings_diagnostics_upload_failed">Last upload failed.</string>
+    <string name="settings_diagnostics_upload_finished">Finished: %1$s</string>
     <string name="settings_app_version_title">App version</string>
     <string name="settings_app_version_summary">%1$s (%2$d)</string>
     <string name="settings_app_version_unknown">Unknown</string>
