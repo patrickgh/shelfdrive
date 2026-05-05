@@ -147,6 +147,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             .apply {
                 addListener(this@ShelfDriveMediaLibraryService)
             }
+        player.setPlaybackParameters(
+            PlaybackParameters(PlaybackPreferences.playbackSpeed(this), player.playbackParameters.pitch),
+        )
         sessionPlayer = AudiobookProgressPlayer(player)
 
         mediaLibrarySession = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
@@ -240,6 +243,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+        PlaybackPreferences.savePlaybackSpeed(this, playbackParameters.speed)
+        saveActivePlaybackState()
         updateMediaButtonPreferences()
     }
 
