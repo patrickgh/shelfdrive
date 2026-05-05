@@ -48,7 +48,7 @@ Current app metadata:
 
 - App name: `ShelfDrive`
 - Application ID: `io.shelfdrive.app`
-- Version: `0.2.0`
+- Version: `0.2.1`
 - Minimum SDK: `29`
 - Target SDK: `35`
 - Supported form factor: Android Automotive OS

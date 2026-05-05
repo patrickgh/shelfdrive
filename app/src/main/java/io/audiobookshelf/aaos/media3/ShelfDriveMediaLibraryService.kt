@@ -633,7 +633,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private fun configureAuthenticatedPlayback(accessToken: String) {
         activeAccessToken = accessToken
-        httpDataSourceFactory.setUserAgent("ShelfDrive/0.2.0")
+        httpDataSourceFactory.setUserAgent("ShelfDrive/0.2.1")
         httpDataSourceFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
     }
 

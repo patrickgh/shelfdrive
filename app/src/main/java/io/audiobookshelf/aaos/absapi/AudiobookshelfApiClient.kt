@@ -544,7 +544,7 @@ class AudiobookshelfApiClient(
                 "deviceInfo",
                 JSONObject()
                     .put("clientName", "ShelfDrive")
-                    .put("clientVersion", "0.2.0")
+                    .put("clientVersion", "0.2.1")
                     .put("manufacturer", "Android Automotive")
                     .put("model", "AAOS"),
             )
