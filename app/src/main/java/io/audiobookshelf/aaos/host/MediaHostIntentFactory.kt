@@ -22,6 +22,7 @@ object MediaHostIntentFactory {
 
         val legacyIntent = Intent(ACTION_MEDIA_TEMPLATE)
             .putExtra(EXTRA_MEDIA_COMPONENT, mediaComponent)
+            .putExtra(EXTRA_LEGACY_MEDIA_ID, ROOT_MEDIA_ID)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (context.canResolveSystemActivity(legacyIntent) || context.canResolveAnyActivity(legacyIntent)) {
             return legacyIntent
@@ -74,6 +75,7 @@ object MediaHostIntentFactory {
     private const val ACTION_MEDIA_TEMPLATE_V2 = "androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2"
     private const val EXTRA_MEDIA_COMPONENT = "android.car.intent.extra.MEDIA_COMPONENT"
     private const val EXTRA_MEDIA_ID = "androidx.car.app.mediaextensions.extra.KEY_MEDIA_ID"
+    private const val EXTRA_LEGACY_MEDIA_ID = "com.android.car.media.intent.extra.MEDIA_ID"
     private const val ROOT_MEDIA_ID = "root"
     private const val REQUEST_MEDIA_HOST = 1001
     private const val REQUEST_SETTINGS = 1002

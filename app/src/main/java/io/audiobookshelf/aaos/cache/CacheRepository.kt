@@ -29,6 +29,7 @@ class CacheRepository(
         }
 
         File(appContext.cacheDir, ARTWORK_CACHE_DIR).deleteRecursively()
+        PlaybackAudioCache.clear(appContext)
         compactDatabase()
         buildSnapshot(clearedAt = System.currentTimeMillis())
     }
@@ -36,11 +37,13 @@ class CacheRepository(
     private fun buildSnapshot(clearedAt: Long? = null): CacheSnapshot {
         val catalog = databaseFiles().fold(Size.EMPTY) { total, file -> total + file.sizeRecursively() }
         val artwork = File(appContext.cacheDir, ARTWORK_CACHE_DIR).sizeRecursively()
-        val total = catalog + artwork
+        val audio = File(appContext.cacheDir, PlaybackAudioCache.DIRECTORY_NAME).sizeRecursively()
+        val total = catalog + artwork + audio
         return CacheSnapshot(
             totalBytes = total.bytes,
             catalogBytes = catalog.bytes,
             artworkBytes = artwork.bytes,
+            audioBytes = audio.bytes,
             fileCount = total.fileCount,
             clearedAt = clearedAt,
         )
