@@ -55,6 +55,13 @@ class DiagnosticsUploader {
         if (uri.host.isNullOrBlank()) {
             throw IOException("Upload URL must contain a host.")
         }
+        val path = uri.path.orEmpty()
+        if (path.isBlank() || path == "/") {
+            return uri.buildUpon()
+                .path(DEFAULT_UPLOAD_PATH)
+                .build()
+                .toString()
+        }
         return trimmed
     }
 
@@ -66,6 +73,7 @@ class DiagnosticsUploader {
     companion object {
         private const val BASIC_USERNAME = "shelfdrive"
         private const val BASIC_PASSWORD = "diagnostics"
+        private const val DEFAULT_UPLOAD_PATH = "/upload"
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 20_000
         private const val MAX_RESPONSE_LENGTH = 240

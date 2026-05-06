@@ -3,9 +3,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import base64
 import cgi
 import json
+import mimetypes
 import os
 from pathlib import Path
 import time
+from urllib.parse import unquote
 
 
 UPLOAD_DIR = Path(os.environ.get("DIAGNOSTICS_UPLOAD_DIR", "/data/uploads"))
@@ -18,6 +20,9 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
     server_version = "ShelfDriveDiagnostics/0.1"
 
     def do_GET(self):
+        if not self.is_authorized():
+            self.send_json(401, {"error": "unauthorized"})
+            return
         if self.path == "/health":
             self.send_json(200, {"status": "ok"})
             return
@@ -32,20 +37,24 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
                             "name": path.name,
                             "bytes": path.stat().st_size,
                             "createdAt": int(path.stat().st_mtime),
+                            "downloadUrl": f"/uploads/{path.name}",
                         }
                         for path in uploads
                     ],
                 },
             )
             return
+        if self.path.startswith("/uploads/"):
+            self.send_file(self.path.removeprefix("/uploads/"))
+            return
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self):
-        if self.path != "/upload":
-            self.send_json(404, {"error": "not_found"})
-            return
         if not self.is_authorized():
             self.send_json(401, {"error": "unauthorized"})
+            return
+        if self.path != "/upload":
+            self.send_json(404, {"error": "not_found"})
             return
         content_length = int(self.headers.get("Content-Length", "0"))
         if content_length <= 0 or content_length > MAX_UPLOAD_BYTES:
@@ -90,6 +99,26 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_file(self, raw_name):
+        filename = safe_filename(unquote(raw_name))
+        path = UPLOAD_DIR / filename
+        if not path.is_file():
+            self.send_json(404, {"error": "not_found"})
+            return
+        content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+        size = path.stat().st_size
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+        self.send_header("Content-Length", str(size))
+        self.end_headers()
+        with path.open("rb") as handle:
+            while True:
+                chunk = handle.read(64 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
 
     def is_authorized(self):
         header = self.headers.get("Authorization", "")
