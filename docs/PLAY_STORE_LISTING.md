@@ -18,6 +18,7 @@ https://support.google.com/googleplay/android-developer/answer/9866151
 Prepared files:
 
 - `docs/play-store/shelfdrive-play-icon-512.png`
+- `docs/play-store/shelfdrive-feature-graphic.png`
 - `docs/play-store/screenshots/aaos-portrait-01-library.png`
 - `docs/play-store/screenshots/aaos-portrait-02-now-playing.png`
 - `docs/play-store/screenshots/aaos-portrait-03-settings.png`
