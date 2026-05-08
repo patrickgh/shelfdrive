@@ -8,6 +8,7 @@ import android.text.format.Formatter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.View
+import androidx.appcompat.app.AlertDialog
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
@@ -269,9 +270,21 @@ class SettingsFragment : PreferenceFragmentCompat() {
             true
         }
 
+        findPreference<Preference>(KEY_PRIVACY_POLICY)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
+            showPrivacyPolicy()
+            true
+        }
+
+        findPreference<Preference>(KEY_LEGAL_NOTICE)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
+            showLegalNotice()
+            true
+        }
+
         findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.setOnPreferenceClickListener {
             resetDiagnosticsUnlockClicks()
-            (activity as? SettingsActivity)?.performDiagnosticsUpload()
+            showDiagnosticsUploadDisclosure()
             true
         }
     }
@@ -448,6 +461,33 @@ class SettingsFragment : PreferenceFragmentCompat() {
         runCatching { startActivity(intent) }
     }
 
+    private fun showPrivacyPolicy() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_privacy_policy_title)
+            .setMessage(R.string.settings_privacy_policy_text)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showLegalNotice() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_legal_notice_title)
+            .setMessage(R.string.settings_legal_notice_text)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    private fun showDiagnosticsUploadDisclosure() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.settings_diagnostics_upload_disclosure_title)
+            .setMessage(R.string.settings_diagnostics_upload_disclosure_text)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(R.string.settings_diagnostics_upload_confirm) { _, _ ->
+                (activity as? SettingsActivity)?.performDiagnosticsUpload()
+            }
+            .show()
+    }
+
     private fun localizeStatusMessage(message: String): String {
         Regex("""Serverversion '(.+)' konnte nicht sauber ausgewertet werden\.""")
             .matchEntire(message)
@@ -611,6 +651,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_DIAGNOSTICS_UPLOAD_ACTION = "diagnostics_upload_action"
         private const val KEY_APP_VERSION = "app_version"
         private const val KEY_HOMEPAGE = "homepage"
+        private const val KEY_PRIVACY_POLICY = "privacy_policy"
+        private const val KEY_LEGAL_NOTICE = "legal_notice"
         private const val DIAGNOSTICS_UNLOCK_CLICK_COUNT = 5
 
         private const val STATE_SERVER_URL = "state_server_url"
