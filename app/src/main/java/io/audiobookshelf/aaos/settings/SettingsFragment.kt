@@ -1,6 +1,8 @@
 package io.audiobookshelf.aaos.settings
 
+import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Bundle
 import android.text.format.Formatter
 import android.text.InputType
@@ -37,6 +39,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private var currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot()
     private var isCommandChannelReady: Boolean = false
     private var isLoginInProgress: Boolean = false
+    private var consecutiveVersionClicks: Int = 0
+    private var areDiagnosticsVisible: Boolean = false
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences, rootKey)
@@ -96,6 +100,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
         super.onSaveInstanceState(outState)
         outState.putString(STATE_SERVER_URL, serverUrlInput)
         outState.putString(STATE_USERNAME, usernameInput)
+    }
+
+    override fun onPreferenceTreeClick(preference: Preference): Boolean {
+        if (preference.key != KEY_APP_VERSION) {
+            resetDiagnosticsUnlockClicks()
+        }
+        return super.onPreferenceTreeClick(preference)
     }
 
     fun renderState(
@@ -219,6 +230,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun configureActions() {
         findPreference<Preference>(KEY_ACCOUNT_ACTION)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
             if (currentAuthSnapshot.status == AuthStatus.AUTHENTICATED) {
                 (activity as? SettingsActivity)?.performLogout()
             } else {
@@ -228,23 +240,43 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<Preference>(KEY_RESYNC_ACTION)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
             (activity as? SettingsActivity)?.performResync()
             true
         }
 
         findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
             (activity as? SettingsActivity)?.performClearCache()
             true
         }
 
+        findPreference<Preference>(KEY_APP_VERSION)?.setOnPreferenceClickListener {
+            if (!areDiagnosticsVisible) {
+                consecutiveVersionClicks += 1
+                if (consecutiveVersionClicks >= DIAGNOSTICS_UNLOCK_CLICK_COUNT) {
+                    areDiagnosticsVisible = true
+                    consecutiveVersionClicks = 0
+                    renderDiagnosticsVisibility()
+                }
+            }
+            true
+        }
+
+        findPreference<Preference>(KEY_HOMEPAGE)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
+            openHomepage()
+            true
+        }
+
         findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.setOnPreferenceClickListener {
+            resetDiagnosticsUnlockClicks()
             (activity as? SettingsActivity)?.performDiagnosticsUpload()
             true
         }
     }
 
     private fun renderFieldState() {
-        findPreference<Preference>(KEY_AUTH_STATUS)?.summary = buildAuthStatusSummary()
         findPreference<Preference>(KEY_SERVER_URL)?.summary =
             serverUrlInput.ifBlank { getString(R.string.settings_not_configured) }
         findPreference<Preference>(KEY_USERNAME)?.summary =
@@ -266,6 +298,17 @@ class SettingsFragment : PreferenceFragmentCompat() {
             BuildConfig.VERSION_NAME,
             BuildConfig.VERSION_CODE,
         )
+        renderDiagnosticsVisibility()
+    }
+
+    private fun renderDiagnosticsVisibility() {
+        findPreference<PreferenceCategory>(KEY_DIAGNOSTICS_CATEGORY)?.isVisible = areDiagnosticsVisible
+    }
+
+    private fun resetDiagnosticsUnlockClicks() {
+        if (!areDiagnosticsVisible) {
+            consecutiveVersionClicks = 0
+        }
     }
 
     private fun renderActionAvailability() {
@@ -342,10 +385,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val parts = mutableListOf(base)
         currentAuthSnapshot.statusMessage
             ?.takeIf { it.isNotBlank() }
+            ?.takeUnless { isServerVersionVerificationWarning(it) }
             ?.let { parts += localizeStatusMessage(it) }
-        currentAuthSnapshot.serverVersion?.takeIf { it.isNotBlank() }?.let { version ->
-            parts += getString(R.string.settings_server_version_summary, version)
-        }
+        currentAuthSnapshot.serverVersion
+            ?.takeIf { it.isNotBlank() }
+            ?.takeUnless { isServerVersionVerificationWarning(it) }
+            ?.let { version ->
+                parts += getString(R.string.settings_server_version_summary, version)
+            }
         return parts.joinToString("\n")
     }
 
@@ -367,11 +414,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun buildCatalogSummary(): String {
+        val parts = mutableListOf(buildAuthStatusSummary())
         val hasCounts = currentSyncSnapshot.libraryCount > 0 ||
             currentSyncSnapshot.bookCount > 0 ||
             currentSyncSnapshot.authorCount > 0 ||
             currentSyncSnapshot.status == SyncStatus.SUCCESS
-        val parts = mutableListOf<String>()
         if (hasCounts) {
             parts += getString(
                 R.string.settings_catalog_counts,
@@ -384,13 +431,21 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         currentSyncSnapshot.lastSyncedAt?.let { timestamp ->
-            parts += getString(R.string.settings_catalog_last_updated, formatSyncTimestamp(timestamp))
-            parts += getString(R.string.settings_catalog_age, formatCacheAge(timestamp))
+            parts += getString(
+                R.string.settings_catalog_updated_and_age,
+                formatSyncTimestamp(timestamp),
+                formatCacheAge(timestamp),
+            )
         }
         if (currentSyncSnapshot.status == SyncStatus.FAILED && currentSyncSnapshot.lastSyncedAt != null) {
             parts += getString(R.string.settings_catalog_stale_after_failed_sync)
         }
         return parts.joinToString("\n")
+    }
+
+    private fun openHomepage() {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.settings_homepage_url)))
+        runCatching { startActivity(intent) }
     }
 
     private fun localizeStatusMessage(message: String): String {
@@ -408,8 +463,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.status_catalog_sync_failed)
             "Sitzung abgelaufen. Bitte erneut anmelden." ->
                 getString(R.string.status_session_expired)
-            "Serverversion konnte nicht verifiziert werden." ->
-                getString(R.string.status_server_version_unknown)
             "URL, Benutzername und Passwort werden benötigt." ->
                 getString(R.string.status_login_fields_required)
             "Login-Antwort enthält kein Zugriffstoken.",
@@ -433,6 +486,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.status_server_url_public_http_forbidden)
             else -> message
         }
+    }
+
+    private fun isServerVersionVerificationWarning(message: String): Boolean {
+        return message == "Serverversion konnte nicht verifiziert werden." ||
+            message == "Server version could not be verified."
     }
 
     private fun buildCacheSummary(): String {
@@ -540,7 +598,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     companion object {
-        private const val KEY_AUTH_STATUS = "auth_status"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
@@ -548,10 +605,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_ACCOUNT_ACTION = "account_action"
         private const val KEY_RESYNC_ACTION = "resync_action"
         private const val KEY_CLEAR_CACHE_ACTION = "clear_cache_action"
+        private const val KEY_DIAGNOSTICS_CATEGORY = "diagnostics_category"
         private const val KEY_STARTUP_DIAGNOSTICS = "startup_diagnostics"
         private const val KEY_DIAGNOSTICS_UPLOAD_URL = "diagnostics_upload_url"
         private const val KEY_DIAGNOSTICS_UPLOAD_ACTION = "diagnostics_upload_action"
         private const val KEY_APP_VERSION = "app_version"
+        private const val KEY_HOMEPAGE = "homepage"
+        private const val DIAGNOSTICS_UNLOCK_CLICK_COUNT = 5
 
         private const val STATE_SERVER_URL = "state_server_url"
         private const val STATE_USERNAME = "state_username"

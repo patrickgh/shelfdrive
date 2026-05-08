@@ -2,13 +2,12 @@
     <string name="app_name">ShelfDrive</string>
     <string name="settings_title">Settings</string>
     <string name="settings_back">Back to media view</string>
-    <string name="settings_category_connection">Connection</string>
+    <string name="settings_category_connection">Status</string>
     <string name="settings_category_account">Account</string>
     <string name="settings_category_playback">Playback</string>
-    <string name="settings_category_storage">Storage</string>
+    <string name="settings_category_storage">About</string>
     <string name="settings_category_diagnostics">Diagnostics</string>
     <string name="settings_key_rewind_on_pause" translatable="false">rewind_on_pause</string>
-    <string name="settings_auth_status_title">Account</string>
     <string name="settings_auth_status_logged_out">Not signed in</string>
     <string name="settings_auth_status_authenticated">Signed in</string>
     <string name="settings_auth_status_session_expired">Session expired</string>
@@ -60,14 +59,16 @@
     <string name="settings_app_version_title">App version</string>
     <string name="settings_app_version_summary">%1$s (%2$d)</string>
     <string name="settings_app_version_unknown">Unknown</string>
+    <string name="settings_homepage_title">Homepage</string>
+    <string name="settings_homepage_summary">https://github.com/patrickgh/shelfdrive</string>
+    <string name="settings_homepage_url" translatable="false">https://github.com/patrickgh/shelfdrive</string>
     <string name="media_action_rewind_15">Back 15 seconds</string>
     <string name="media_action_forward_15">Forward 15 seconds</string>
     <string name="media_action_playback_speed">Playback speed</string>
     <string name="media_action_playback_speed_value">Playback speed %1$s</string>
     <string name="settings_library_count_unknown">No catalog data yet</string>
     <string name="settings_catalog_counts">%1$d libraries · %2$d audiobooks · %3$d authors</string>
-    <string name="settings_catalog_last_updated">Last updated: %1$s</string>
-    <string name="settings_catalog_age">Age: %1$s</string>
+    <string name="settings_catalog_updated_and_age">Last updated: %1$s · Age: %2$s</string>
     <string name="settings_catalog_stale_after_failed_sync">The last successful catalog remains available.</string>
     <string name="settings_server_version_summary">Server version: %1$s</string>
     <string name="settings_cache_age_now">just now</string>
