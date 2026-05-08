@@ -40,6 +40,26 @@ object PlaybackSnapshotPolicy {
             .build()
     }
 
+    @OptIn(UnstableApi::class)
+    fun storedStateFromBrowseItem(
+        bookId: String,
+        item: MediaItem,
+        nowMs: Long,
+    ): StoredPlaybackState {
+        return StoredPlaybackState(
+            bookId = bookId,
+            title = item.mediaMetadata.title?.toString(),
+            author = item.mediaMetadata.artist?.toString(),
+            artworkUri = item.mediaMetadata.artworkUri,
+            durationMs = item.mediaMetadata.durationMs,
+            positionMs = 0L,
+            trackIndex = 0,
+            playbackSpeed = 1f,
+            wasPlaying = false,
+            updatedAt = nowMs,
+        )
+    }
+
     private const val SILENT_WAV_DATA_URI =
         "data:audio/wav;base64,UklGRjQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YRAAAAAAAAAAAAAAAAAAAAAA"
 }

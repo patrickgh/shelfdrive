@@ -380,6 +380,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 val requestedItem = mediaItems.firstOrNull()
                     ?: throw PlaybackResolutionException("Kein Medium ausgewaehlt.")
                 Log.i(TAG, "Host requested playback for mediaId=${requestedItem.mediaId}.")
+                publishRequestedPlaybackPlaceholder(requestedItem)
                 val playback = resolveRequestedPlayback(requestedItem)
                 Log.i(TAG, "Resolved playback for book=${playback.playback.bookId} tracks=${playback.playback.queue.size}.")
                 activeBook = playback.playback
@@ -505,6 +506,28 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 },
             )
         return playbackRepository.resolveBook(book.id)
+    }
+
+    private fun publishRequestedPlaybackPlaceholder(requestedItem: MediaItem) {
+        val requestedBookId = (BrowseNodeId.parse(requestedItem.mediaId) as? BrowseNodeId.Book)?.bookId
+            ?: return
+        val placeholderState = PlaybackSnapshotPolicy.storedStateFromBrowseItem(
+            bookId = requestedBookId,
+            item = requestedItem,
+            nowMs = System.currentTimeMillis(),
+        )
+        activeBook = null
+        placeholderPlaybackState = placeholderState
+        player.stop()
+        player.setMediaItem(PlaybackSnapshotPolicy.placeholderMediaItem(placeholderState), 0L)
+        player.playWhenReady = false
+        diagnosticEventLogger.record(
+            "playback_placeholder_published",
+            mapOf(
+                "source" to "browse_item",
+                "hasTitle" to (!placeholderState.title.isNullOrBlank()).toString(),
+            ),
+        )
     }
 
     private fun publishStoredPlaybackPlaceholder() {
