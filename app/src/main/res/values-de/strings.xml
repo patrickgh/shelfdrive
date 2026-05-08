@@ -35,7 +35,7 @@
     <string name="settings_resync_summary_failed">Aktualisierung nicht möglich. Der letzte Stand bleibt verfügbar.</string>
     <string name="settings_clear_cache_summary_initial">Speicherbelegung wird ermittelt...</string>
     <string name="settings_clear_cache_summary_usage">Verwendet aktuell: %1$s</string>
-    <string name="settings_clear_cache_summary_scope">Entfernt Katalogdaten, Coverbilder und lokal zwischengespeicherten Fortschritt. Die Anmeldung bleibt erhalten.</string>
+    <string name="settings_clear_cache_summary_scope">Entfernt Katalogdaten, Coverbilder, Audio-Cache und lokal zwischengespeicherten Fortschritt. Die Anmeldung bleibt erhalten.</string>
     <string name="settings_clear_cache_summary_cleared">Zuletzt geleert: %1$s</string>
     <string name="settings_diagnostics_title">Diagnose</string>
     <string name="settings_diagnostics_no_start">Noch kein Dienststart erfasst.</string>

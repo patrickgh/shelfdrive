@@ -48,7 +48,7 @@ Current app metadata:
 
 - App name: `ShelfDrive`
 - Application ID: `io.shelfdrive.app`
-- Version: `0.2.1`
+- Version: `0.3.0`
 - Minimum SDK: `29`
 - Target SDK: `35`
 - Supported form factor: Android Automotive OS
@@ -66,10 +66,10 @@ Current app metadata:
 - Cycle playback speed from the now-playing controls through AAOS-supported values.
 - Sync playback progress back to Audiobookshelf while playback is active.
 - Keep Audiobookshelf as the source of truth for listening progress.
-- Restore the last local playback state after app or vehicle restarts.
+- Restore the last local playback state after app or vehicle restarts, including immediate AAOS media metadata while the server session is refreshed.
 - Optionally rewind 15 seconds when pausing, so resume starts with a short recap.
 - Configure server URL, username, password, connection state, sync state, and cache actions in Settings.
-- Cache catalog data and artwork locally for faster browsing after a successful sync.
+- Cache catalog data, artwork, and a bounded 128 MB opportunistic audio buffer locally.
 
 ## Non-Goals
 
@@ -110,6 +110,9 @@ emulator. Desktop hostnames often do not resolve in AAOS images; use a LAN IP or
 
 ShelfDrive is online-first. Starting playback requires the Audiobookshelf server
 because the app resolves a playback session and stream URLs at play time.
+When a previous playback item exists locally, ShelfDrive publishes its saved
+metadata to AAOS immediately so the media host can keep showing the current
+title while the online playback session is refreshed.
 
 ## Playback And Progress
 
@@ -128,6 +131,10 @@ The optional 15-second pause rewind changes the actual player position before
 the pause progress is synced. Pressing play again resumes from the rewound
 position.
 
+After a restart, restored playback is kept idle until the user presses play.
+This preserves the AAOS browse root while still keeping the last title available
+in the mini-player.
+
 ## Settings
 
 The Settings screen is intentionally focused and vehicle-friendly:
@@ -144,9 +151,11 @@ The Settings screen is intentionally focused and vehicle-friendly:
 
 ## Cache Policy
 
-ShelfDrive stores a local catalog cache in Room and artwork in the app cache
-directory. The cache is used for browsing and media host presentation; the
-Audiobookshelf server remains the authority for catalog and progress data.
+ShelfDrive stores a local catalog cache in Room, artwork in the app cache
+directory, and a bounded 128 MB opportunistic ExoPlayer audio cache. The cache is
+used for browsing, media host presentation, and faster warm resumes; the
+Audiobookshelf server remains the authority for catalog, stream authorization,
+and progress data.
 
 The cache can be cleared from Settings. Android may also clear app cache files
 under storage pressure. App uninstall removes all local app data.
@@ -166,7 +175,7 @@ ShelfDrive is built around Android media primitives:
 - `MediaLibraryService` exposes the browsable audiobook catalog.
 - Media3 `MediaSession` publishes metadata, playback state, and transport actions.
 - Media3 custom commands provide 15-second seek controls and playback-speed cycling.
-- ExoPlayer handles audiobook playback.
+- ExoPlayer handles audiobook playback with a bounded local audio cache.
 - Room stores the local catalog and progress cache.
 - AndroidX Security stores credentials and tokens.
 - A content provider serves authenticated artwork to the media host.
