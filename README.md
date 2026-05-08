@@ -234,7 +234,7 @@ release bundle for compile verification. Do not upload an unsigned bundle to
 Google Play.
 
 For Android Automotive OS internal testing, see
-[PLAY_STORE_INTERNAL_TEST.md](PLAY_STORE_INTERNAL_TEST.md).
+[PLAY_STORE_INTERNAL_TEST.md](docs/PLAY_STORE_INTERNAL_TEST.md).
 
 ## Repository Layout
 
