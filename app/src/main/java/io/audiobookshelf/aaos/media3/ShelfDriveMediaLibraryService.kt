@@ -1,6 +1,5 @@
 package io.audiobookshelf.aaos.media3
 
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.annotation.OptIn
@@ -197,10 +196,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? {
         return mediaLibrarySession
-    }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onDestroy() {

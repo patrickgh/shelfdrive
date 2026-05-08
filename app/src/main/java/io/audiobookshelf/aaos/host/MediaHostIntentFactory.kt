@@ -42,15 +42,6 @@ object MediaHostIntentFactory {
         )
     }
 
-    fun createSettingsPendingIntent(context: Context): PendingIntent {
-        return PendingIntent.getActivity(
-            context,
-            REQUEST_SETTINGS,
-            createSettingsIntent(context),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-    }
-
     private fun createSettingsIntent(context: Context): Intent {
         return Intent(Intent.ACTION_APPLICATION_PREFERENCES)
             .setClass(context, SettingsActivity::class.java)
@@ -78,5 +69,4 @@ object MediaHostIntentFactory {
     private const val EXTRA_LEGACY_MEDIA_ID = "com.android.car.media.intent.extra.MEDIA_ID"
     private const val ROOT_MEDIA_ID = "root"
     private const val REQUEST_MEDIA_HOST = 1001
-    private const val REQUEST_SETTINGS = 1002
 }
