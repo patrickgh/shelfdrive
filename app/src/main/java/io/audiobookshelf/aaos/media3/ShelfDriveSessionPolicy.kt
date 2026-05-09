@@ -77,27 +77,47 @@ internal class ShelfDriveSessionPolicy(
 
     fun mediaButtonPreferences(playbackSpeed: Float = DEFAULT_PLAYBACK_SPEED): List<CommandButton> {
         return listOf(
-            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-                .setSessionCommand(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
-                .setDisplayName(context.getString(R.string.media_action_rewind_15))
-                .setSlots(CommandButton.SLOT_BACK)
-                .build(),
-            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-                .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
-                .setDisplayName(context.getString(R.string.media_action_forward_15))
-                .setSlots(CommandButton.SLOT_FORWARD)
-                .build(),
-            CommandButton.Builder(playbackSpeedIcon(playbackSpeed))
-                .setSessionCommand(SessionCommand(CMD_CYCLE_PLAYBACK_SPEED, Bundle.EMPTY))
-                .setDisplayName(
-                    context.getString(
-                        R.string.media_action_playback_speed_value,
-                        playbackSpeedLabel(playbackSpeed),
-                    ),
-                )
-                .setSlots(CommandButton.SLOT_BACK_SECONDARY)
-                .build(),
+            rewindButton(),
+            forwardButton(),
+            playbackSpeedButton(playbackSpeed),
         )
+    }
+
+    fun customLayout(playbackSpeed: Float = DEFAULT_PLAYBACK_SPEED): List<CommandButton> {
+        return listOf(
+            rewindButton(),
+            playbackSpeedButton(playbackSpeed),
+            forwardButton(),
+        )
+    }
+
+    private fun rewindButton(): CommandButton {
+        return CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+            .setSessionCommand(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
+            .setDisplayName(context.getString(R.string.media_action_rewind_15))
+            .setSlots(CommandButton.SLOT_BACK)
+            .build()
+    }
+
+    private fun forwardButton(): CommandButton {
+        return CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
+            .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
+            .setDisplayName(context.getString(R.string.media_action_forward_15))
+            .setSlots(CommandButton.SLOT_FORWARD)
+            .build()
+    }
+
+    private fun playbackSpeedButton(playbackSpeed: Float): CommandButton {
+        return CommandButton.Builder(playbackSpeedIcon(playbackSpeed))
+            .setSessionCommand(SessionCommand(CMD_CYCLE_PLAYBACK_SPEED, Bundle.EMPTY))
+            .setDisplayName(
+                context.getString(
+                    R.string.media_action_playback_speed_value,
+                    playbackSpeedLabel(playbackSpeed),
+                ),
+            )
+            .setSlots(CommandButton.SLOT_BACK_SECONDARY, CommandButton.SLOT_OVERFLOW)
+            .build()
     }
 
     companion object {

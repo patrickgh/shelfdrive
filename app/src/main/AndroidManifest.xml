@@ -8,6 +8,20 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <queries>
+        <package android:name="com.android.vending" />
+        <package android:name="com.google.android.gms" />
+        <package android:name="com.android.car.media" />
+        <package android:name="com.google.android.apps.automotive.templates.host" />
+        <package android:name="com.google.android.projection.gearhead" />
+        <intent>
+            <action android:name="android.car.intent.action.MEDIA_TEMPLATE" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2" />
+        </intent>
+    </queries>
+
     <application
         android:allowBackup="false"
         android:appCategory="audio"
@@ -53,12 +67,19 @@
             <intent-filter>
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
             <meta-data
                 android:name="androidx.car.app.launchable"
                 android:value="true" />
         </service>
+
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".account.AudiobookshelfAuthenticatorService"

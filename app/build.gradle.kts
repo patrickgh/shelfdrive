@@ -16,14 +16,14 @@ plugins {
 
 android {
     namespace = "io.audiobookshelf.aaos"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.shelfdrive.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.3.0"
+        versionCode = 6
+        versionName = "0.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -82,9 +82,9 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.fragment:fragment-ktx:1.8.6")
-    implementation("androidx.media3:media3-exoplayer:1.5.1")
-    implementation("androidx.media3:media3-session:1.5.1")
-    implementation("androidx.media3:media3-database:1.5.1")
+    implementation("androidx.media3:media3-exoplayer:1.10.0")
+    implementation("androidx.media3:media3-session:1.10.0")
+    implementation("androidx.media3:media3-database:1.10.0")
     implementation("androidx.concurrent:concurrent-futures:1.1.0")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")

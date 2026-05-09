@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import base64
 import cgi
+import hmac
 import json
 import mimetypes
 import os
@@ -12,19 +13,27 @@ from urllib.parse import unquote
 
 UPLOAD_DIR = Path(os.environ.get("DIAGNOSTICS_UPLOAD_DIR", "/data/uploads"))
 MAX_UPLOAD_BYTES = int(os.environ.get("DIAGNOSTICS_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
-BASIC_USERNAME = os.environ.get("DIAGNOSTICS_BASIC_USERNAME", "shelfdrive")
-BASIC_PASSWORD = os.environ.get("DIAGNOSTICS_BASIC_PASSWORD", "diagnostics")
+UPLOAD_USERNAME = os.environ.get(
+    "DIAGNOSTICS_UPLOAD_USERNAME",
+    os.environ.get("DIAGNOSTICS_BASIC_USERNAME", "shelfdrive-upload"),
+)
+UPLOAD_PASSWORD = os.environ.get(
+    "DIAGNOSTICS_UPLOAD_PASSWORD",
+    os.environ.get("DIAGNOSTICS_BASIC_PASSWORD", "sd-upload-2026-K7mQ4p9v"),
+)
+DOWNLOAD_USERNAME = os.environ.get("DIAGNOSTICS_DOWNLOAD_USERNAME", "shelfdrive-download")
+DOWNLOAD_PASSWORD = os.environ.get("DIAGNOSTICS_DOWNLOAD_PASSWORD", "sd-download-2026-P8wN3x2r")
 
 
 class DiagnosticsHandler(BaseHTTPRequestHandler):
     server_version = "ShelfDriveDiagnostics/0.1"
 
     def do_GET(self):
-        if not self.is_authorized():
-            self.send_json(401, {"error": "unauthorized"})
-            return
         if self.path == "/health":
             self.send_json(200, {"status": "ok"})
+            return
+        if not self.is_authorized(DOWNLOAD_USERNAME, DOWNLOAD_PASSWORD):
+            self.send_json(401, {"error": "unauthorized"})
             return
         if self.path == "/":
             uploads = sorted(UPLOAD_DIR.glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
@@ -50,7 +59,7 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self):
-        if not self.is_authorized():
+        if not self.is_authorized(UPLOAD_USERNAME, UPLOAD_PASSWORD):
             self.send_json(401, {"error": "unauthorized"})
             return
         if self.path != "/upload":
@@ -120,7 +129,7 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
 
-    def is_authorized(self):
+    def is_authorized(self, expected_username, expected_password):
         header = self.headers.get("Authorization", "")
         if not header.startswith("Basic "):
             return False
@@ -129,7 +138,11 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
         except Exception:
             return False
         username, separator, password = decoded.partition(":")
-        return separator == ":" and username == BASIC_USERNAME and password == BASIC_PASSWORD
+        return (
+            separator == ":"
+            and hmac.compare_digest(username, expected_username)
+            and hmac.compare_digest(password, expected_password)
+        )
 
 
 def safe_filename(name):

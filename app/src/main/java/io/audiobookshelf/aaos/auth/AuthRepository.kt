@@ -259,22 +259,23 @@ class AuthRepository(
                     hasStoredPassword = !stored.password.isNullOrBlank(),
                 )
             } catch (exception: ApiException) {
-                if (exception.statusCode != 401) {
-                    Log.w(TAG, "Token refresh failed with API error ${exception.statusCode}.", exception)
-                    accountRegistry?.upsert(
-                        username = username,
-                        baseUrl = baseUrl,
-                        accessToken = stored.accessToken,
-                        serverVersion = null,
-                    )
-                    return AuthSnapshot(
-                        status = AuthStatus.AUTHENTICATED,
-                        baseUrl = baseUrl,
-                        username = username,
-                        statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                        hasStoredPassword = !stored.password.isNullOrBlank(),
-                    )
+                if (exception.statusCode == 401 || exception.statusCode == 403) {
+                    return silentReauthenticate(stored, baseUrl, username)
                 }
+                Log.w(TAG, "Token refresh failed with API error ${exception.statusCode}.", exception)
+                accountRegistry?.upsert(
+                    username = username,
+                    baseUrl = baseUrl,
+                    accessToken = stored.accessToken,
+                    serverVersion = null,
+                )
+                return AuthSnapshot(
+                    status = AuthStatus.AUTHENTICATED,
+                    baseUrl = baseUrl,
+                    username = username,
+                    statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
+                    hasStoredPassword = !stored.password.isNullOrBlank(),
+                )
             } catch (exception: IOException) {
                 Log.w(TAG, "Token refresh failed due to IO error. Keeping cached session alive.", exception)
                 accountRegistry?.upsert(

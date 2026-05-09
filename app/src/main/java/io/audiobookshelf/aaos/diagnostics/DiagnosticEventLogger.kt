@@ -25,9 +25,17 @@ class DiagnosticEventLogger(context: Context) {
     }
 
     fun readLogText(): String {
+        return readText(logFile)
+    }
+
+    fun readPreviousLogText(): String {
+        return readText(File(directory, BACKUP_LOG_FILE_NAME))
+    }
+
+    private fun readText(file: File): String {
         return try {
-            if (logFile.isFile) {
-                logFile.readText()
+            if (file.isFile) {
+                file.readText()
             } else {
                 ""
             }

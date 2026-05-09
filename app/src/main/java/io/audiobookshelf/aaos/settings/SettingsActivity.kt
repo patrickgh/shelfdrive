@@ -50,10 +50,13 @@ class SettingsActivity : AppCompatActivity() {
     private var loginInProgress: Boolean = false
     private var isStarted: Boolean = false
     private var reconnectAttempt: Int = 0
+    private lateinit var diagnosticEventLogger: DiagnosticEventLogger
 
     override fun onCreate(savedInstanceState: Bundle?) {
         delegate.setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
+        diagnosticEventLogger = DiagnosticEventLogger(this)
+        diagnosticEventLogger.record("settings_created")
         setContentView(R.layout.activity_settings)
 
         findViewById<MaterialToolbar>(R.id.toolbar).apply {
@@ -81,6 +84,7 @@ class SettingsActivity : AppCompatActivity() {
             )
             currentDiagnosticsUploadSnapshot = diagnosticsUploadStorage.load()
         }
+        diagnosticEventLogger.record("settings_started")
         renderState()
         connectMediaController()
     }
@@ -92,6 +96,9 @@ class SettingsActivity : AppCompatActivity() {
         controllerFuture = null
         mediaController?.release()
         mediaController = null
+        if (::diagnosticEventLogger.isInitialized) {
+            diagnosticEventLogger.record("settings_stopped")
+        }
         super.onStop()
     }
 
@@ -227,6 +234,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun sendCommand(command: String, extras: Bundle?, onResult: (Bundle?) -> Unit) {
         val controller = mediaController
         if (controller == null) {
+            diagnosticEventLogger.record("settings_command_without_controller", mapOf("command" to command))
             connectMediaController()
             renderState()
             return
@@ -240,8 +248,23 @@ class SettingsActivity : AppCompatActivity() {
                 runCatching {
                     future.get()
                 }.onSuccess { result ->
+                    diagnosticEventLogger.record(
+                        "settings_command_success",
+                        mapOf(
+                            "command" to command,
+                            "resultCode" to result.resultCode.toString(),
+                        ),
+                    )
                     onResult(result.extras)
-                }.onFailure {
+                }.onFailure { exception ->
+                    diagnosticEventLogger.record(
+                        "settings_command_failed",
+                        mapOf(
+                            "command" to command,
+                            "exception" to exception::class.java.simpleName,
+                            "message" to exception.message,
+                        ),
+                    )
                     scheduleReconnect()
                     renderState()
                 }
@@ -260,6 +283,7 @@ class SettingsActivity : AppCompatActivity() {
         )
         val future = MediaController.Builder(this, token).buildAsync()
         controllerFuture = future
+        diagnosticEventLogger.record("settings_controller_connect_started")
         future.addListener(
             {
                 runCatching {
@@ -272,14 +296,22 @@ class SettingsActivity : AppCompatActivity() {
                     reconnectAttempt = 0
                     mediaController = controller
                     controllerFuture = null
+                    diagnosticEventLogger.record("settings_controller_connect_success")
                     renderState()
                     requestAuthState()
                     requestSyncState()
                     requestCacheState()
-                }.onFailure {
+                }.onFailure { exception ->
                     controllerFuture = null
                     mediaController = null
                     loginInProgress = false
+                    diagnosticEventLogger.record(
+                        "settings_controller_connect_failed",
+                        mapOf(
+                            "exception" to exception::class.java.simpleName,
+                            "message" to exception.message,
+                        ),
+                    )
                     renderState()
                     scheduleReconnect()
                 }
@@ -295,6 +327,10 @@ class SettingsActivity : AppCompatActivity() {
         val delayMs = (RECONNECT_INITIAL_DELAY_MS shl reconnectAttempt.coerceAtMost(RECONNECT_MAX_SHIFT))
             .coerceAtMost(RECONNECT_MAX_DELAY_MS)
         reconnectAttempt += 1
+        diagnosticEventLogger.record(
+            "settings_controller_reconnect_scheduled",
+            mapOf("delayMs" to delayMs.toString()),
+        )
         mainHandler.postDelayed(
             {
                 if (isStarted && mediaController == null) {

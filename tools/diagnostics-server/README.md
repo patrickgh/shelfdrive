@@ -22,28 +22,61 @@ automatically:
 http://YOUR_HOST_OR_IP:8080
 ```
 
-Uploads use built-in Basic Authentication credentials:
+The Android app defaults to:
 
 ```text
-username: shelfdrive
-password: diagnostics
+https://shelfdev.mooo.com:23377/
 ```
 
-The Android app sends those credentials automatically, so only the URL must be
-entered in the app settings. You can override the server-side credentials via
-`DIAGNOSTICS_BASIC_USERNAME` and `DIAGNOSTICS_BASIC_PASSWORD`, but then the app
-must be changed to match.
+Uploads use separate built-in Basic Authentication credentials from downloads.
+The Android app sends the upload credentials automatically, so only the URL must
+be entered in the app settings.
+
+Default upload credentials:
+
+```text
+username: shelfdrive-upload
+password: sd-upload-2026-K7mQ4p9v
+```
+
+Default download credentials:
+
+```text
+username: shelfdrive-download
+password: sd-download-2026-P8wN3x2r
+```
+
+You can override the server-side credentials with:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e DIAGNOSTICS_UPLOAD_USERNAME='shelfdrive-upload' \
+  -e DIAGNOSTICS_UPLOAD_PASSWORD='sd-upload-2026-K7mQ4p9v' \
+  -e DIAGNOSTICS_DOWNLOAD_USERNAME='shelfdrive-download' \
+  -e DIAGNOSTICS_DOWNLOAD_PASSWORD='change-this-download-password' \
+  -v "$PWD/diagnostics-uploads:/data/uploads" \
+  shelfdrive-diagnostics
+```
+
+If you change the upload credentials on the server, the Android app must be
+changed to match. Changing only the download credentials does not require an app
+release.
+
+For compatibility with older deployments, `DIAGNOSTICS_BASIC_USERNAME` and
+`DIAGNOSTICS_BASIC_PASSWORD` are still accepted as upload credential overrides
+when the new upload-specific variables are not set.
 
 List stored packages:
 
 ```bash
-curl -u shelfdrive:diagnostics http://YOUR_HOST_OR_IP:8080/
+curl -u shelfdrive-download:sd-download-2026-P8wN3x2r http://YOUR_HOST_OR_IP:8080/
 ```
 
 Download a package from the `downloadUrl` returned by the listing:
 
 ```bash
-curl -u shelfdrive:diagnostics -O http://YOUR_HOST_OR_IP:8080/uploads/PACKAGE.zip
+curl -u shelfdrive-download:sd-download-2026-P8wN3x2r -O http://YOUR_HOST_OR_IP:8080/uploads/PACKAGE.zip
 ```
 
-All endpoints require Basic Authentication.
+Upload, listing, and download endpoints require Basic Authentication. `/health`
+is unauthenticated for deployment checks.

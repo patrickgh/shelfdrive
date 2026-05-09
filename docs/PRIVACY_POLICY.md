@@ -14,8 +14,9 @@ Privacy contact: dsaos9632@gmail.com
 ShelfDrive does not include advertising, analytics SDKs, tracking SDKs, or a
 developer-operated content service.
 
-ShelfDrive connects only to the Audiobookshelf server URL that you enter in the
-app settings, unless you separately configure and use diagnostics upload.
+ShelfDrive connects to the Audiobookshelf server URL that you enter in the app
+settings. If you explicitly send diagnostics, ShelfDrive uploads a diagnostic
+package to the diagnostics upload URL shown in Settings.
 
 ShelfDrive stores account, catalog, artwork, playback, cache, diagnostics, and
 settings data locally on your Android Automotive OS device so the app can sign
@@ -36,7 +37,7 @@ ShelfDrive may store the following data locally on your device:
 - App settings, including playback preferences.
 - Diagnostics state, such as service startup status, restore status, upload
   status, and error messages.
-- Diagnostics upload URL, if you configure one.
+- Diagnostics upload URL.
 
 Credentials are stored using Android encrypted storage. Android backup is
 disabled for ShelfDrive app data.
@@ -70,7 +71,8 @@ progress according to that server operator's own policies and configuration.
 ## Diagnostics Upload
 
 ShelfDrive can optionally create and upload a diagnostics package if you
-configure a diagnostics upload URL and explicitly start the upload.
+explicitly start the upload. The app includes a default diagnostics upload URL
+that can be changed in Settings.
 
 The diagnostics package may include:
 
@@ -82,8 +84,8 @@ The diagnostics package may include:
 
 The diagnostics package does not intentionally include your saved password.
 
-If you configure and use diagnostics upload, the package is sent to the upload
-URL that you entered. The recipient of that URL controls what happens to the
+If you use diagnostics upload, the package is sent to the diagnostics upload URL
+shown in Settings. The recipient of that URL controls what happens to the
 uploaded file after it is received.
 
 ## Data Shared with Third Parties
@@ -98,7 +100,7 @@ Data may be transmitted to:
 
 - The Audiobookshelf server URL configured by you, as required for app
   functionality.
-- The diagnostics upload URL configured by you, only if you explicitly send a
+- The diagnostics upload URL shown in Settings, only if you explicitly send a
   diagnostics package.
 
 If this privacy policy is hosted on GitHub or GitHub Pages, GitHub may process

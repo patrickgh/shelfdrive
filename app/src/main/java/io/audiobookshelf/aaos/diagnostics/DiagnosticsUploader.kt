@@ -71,8 +71,8 @@ class DiagnosticsUploader {
     }
 
     companion object {
-        private const val BASIC_USERNAME = "shelfdrive"
-        private const val BASIC_PASSWORD = "diagnostics"
+        private const val BASIC_USERNAME = "shelfdrive-upload"
+        private const val BASIC_PASSWORD = "sd-upload-2026-K7mQ4p9v"
         private const val DEFAULT_UPLOAD_PATH = "/upload"
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 20_000
