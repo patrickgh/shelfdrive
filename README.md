@@ -16,6 +16,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue">
 </p>
 
+<p align="center">
+  <img src="docs/play-store/shelfdrive-feature-graphic.png" alt="ShelfDrive feature graphic showing Audiobookshelf playback in an Android Automotive media host" width="820">
+</p>
+
 ShelfDrive connects an Android Automotive OS vehicle to a self-hosted
 [Audiobookshelf](https://www.audiobookshelf.org/) server. It exposes your
 audiobook library through the native AAOS media experience instead of shipping
@@ -167,6 +171,8 @@ under storage pressure. App uninstall removes all local app data.
 - The app communicates only with the Audiobookshelf server URL configured by the user.
 - Cleartext HTTP is allowed for local/private Audiobookshelf servers, but HTTPS is recommended for remote access.
 - No analytics, ads, or tracking SDKs are included.
+
+For more detail, see the [Privacy Policy](docs/PRIVACY_POLICY.md).
 
 ## Architecture
 
