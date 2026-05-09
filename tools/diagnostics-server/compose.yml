@@ -1,0 +1,27 @@
+services:
+  diagnostics:
+    image: shelfdrive-diagnostics:latest
+    build:
+      context: https://github.com/patrickgh/shelfdrive.git#main:tools/diagnostics-server
+    container_name: shelfdrive-diagnostics
+    restart: unless-stopped
+    ports:
+      - "${DIAGNOSTICS_PORT:-8080}:8080"
+    environment:
+      DIAGNOSTICS_UPLOAD_DIR: /data/uploads
+      DIAGNOSTICS_MAX_UPLOAD_BYTES: ${DIAGNOSTICS_MAX_UPLOAD_BYTES:-20971520}
+      DIAGNOSTICS_UPLOAD_USERNAME: ${DIAGNOSTICS_UPLOAD_USERNAME:-shelfdrive-upload}
+      DIAGNOSTICS_UPLOAD_PASSWORD: ${DIAGNOSTICS_UPLOAD_PASSWORD:-sd-upload-2026-K7mQ4p9v}
+      DIAGNOSTICS_DOWNLOAD_USERNAME: ${DIAGNOSTICS_DOWNLOAD_USERNAME:-shelfdrive-download}
+      DIAGNOSTICS_DOWNLOAD_PASSWORD: ${DIAGNOSTICS_DOWNLOAD_PASSWORD:-change-this-download-password}
+    volumes:
+      - diagnostics-uploads:/data/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  diagnostics-uploads:

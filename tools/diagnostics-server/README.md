@@ -9,6 +9,29 @@ docker build -t shelfdrive-diagnostics tools/diagnostics-server
 docker run --rm -p 8080:8080 -v "$PWD/diagnostics-uploads:/data/uploads" shelfdrive-diagnostics
 ```
 
+Deploy directly from GitHub with Docker Compose:
+
+```bash
+curl -O https://raw.githubusercontent.com/patrickgh/shelfdrive/main/tools/diagnostics-server/compose.yml
+DIAGNOSTICS_DOWNLOAD_PASSWORD='change-this-download-password' docker compose up --build -d
+```
+
+The compose file builds from:
+
+```text
+https://github.com/patrickgh/shelfdrive.git#main:tools/diagnostics-server
+```
+
+Redeploy after a GitHub update:
+
+```bash
+docker compose build --pull --no-cache diagnostics
+docker compose up -d
+```
+
+Uploads are stored in the named Docker volume `diagnostics-uploads`, so
+recreating the container does not delete uploaded diagnostic packages.
+
 Use this upload URL in the app settings:
 
 ```text
