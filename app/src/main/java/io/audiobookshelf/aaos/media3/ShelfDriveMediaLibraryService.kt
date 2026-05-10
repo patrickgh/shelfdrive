@@ -45,7 +45,6 @@ import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
-import io.audiobookshelf.aaos.host.MediaHostIntentFactory
 import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
 import io.audiobookshelf.aaos.playback.PlaybackPreferences
 import io.audiobookshelf.aaos.playback.PlaybackQueueMath
@@ -170,7 +169,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         sessionPlayer = AudiobookProgressPlayer(player)
 
         mediaLibrarySession = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
-            .setSessionActivity(MediaHostIntentFactory.createMediaHostPendingIntent(this))
             .setCustomLayout(sessionPolicy.customLayout(player.playbackParameters.speed))
             .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed))
             .build()
@@ -339,7 +337,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 .setAvailablePlayerCommands(sessionPolicy.availablePlayerCommands())
                 .setCustomLayout(sessionPolicy.customLayout(player.playbackParameters.speed))
                 .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed))
-                .setSessionActivity(MediaHostIntentFactory.createMediaHostPendingIntent(this@ShelfDriveMediaLibraryService))
                 .build()
         }
 

@@ -12,14 +12,6 @@
         <package android:name="com.android.vending" />
         <package android:name="com.google.android.gms" />
         <package android:name="com.android.car.media" />
-        <package android:name="com.google.android.apps.automotive.templates.host" />
-        <package android:name="com.google.android.projection.gearhead" />
-        <intent>
-            <action android:name="android.car.intent.action.MEDIA_TEMPLATE" />
-        </intent>
-        <intent>
-            <action android:name="androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2" />
-        </intent>
     </queries>
 
     <application
@@ -42,9 +34,6 @@
         <meta-data
             android:name="androidx.car.app.TintableAttributionIcon"
             android:resource="@drawable/ic_attribution_icon" />
-        <meta-data
-            android:name="com.google.android.gms.car.application.theme"
-            android:resource="@style/Theme.AbsAaos.CarHost" />
 
         <activity
             android:name=".settings.SettingsActivity"
@@ -68,9 +57,6 @@
                 <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
-            <meta-data
-                android:name="androidx.car.app.launchable"
-                android:value="true" />
         </service>
 
         <receiver
