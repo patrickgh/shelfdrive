@@ -107,9 +107,18 @@ internal class ShelfDriveMediaCatalog(
     fun rootParams(params: LibraryParams?): LibraryParams {
         val extras = Bundle(params?.extras ?: Bundle.EMPTY).apply {
             putBoolean(CONTENT_STYLE_SUPPORTED, true)
+            putBoolean(MEDIA_SEARCH_SUPPORTED, true)
             putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
             putInt(
+                CONTENT_STYLE_BROWSABLE_HINT,
+                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            )
+            putInt(
                 MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            )
+            putInt(
+                CONTENT_STYLE_PLAYABLE_HINT,
                 MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             )
             putInt(
@@ -426,5 +435,8 @@ internal class ShelfDriveMediaCatalog(
 
     private companion object {
         private const val CONTENT_STYLE_SUPPORTED = "android.media.browse.CONTENT_STYLE_SUPPORTED"
+        private const val CONTENT_STYLE_BROWSABLE_HINT = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"
+        private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
+        private const val MEDIA_SEARCH_SUPPORTED = "android.media.browse.SEARCH_SUPPORTED"
     }
 }

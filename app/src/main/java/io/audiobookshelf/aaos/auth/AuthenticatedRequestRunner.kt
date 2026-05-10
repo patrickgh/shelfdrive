@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.auth
 
 import io.audiobookshelf.aaos.absapi.ApiException
+import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -24,7 +25,7 @@ class AuthenticatedRequestRunner(
             } catch (secondException: ApiException) {
                 if (secondException.statusCode == 401) {
                     throw AuthenticationRequiredException(
-                        message = "Sitzung abgelaufen. Bitte erneut anmelden.",
+                        message = UserVisibleStatus.SESSION_EXPIRED,
                         cause = secondException,
                     )
                 }
@@ -39,11 +40,11 @@ class AuthenticatedRequestRunner(
         val snapshot = authRepository.bootstrap()
         if (!snapshot.isAuthenticated) {
             throw AuthenticationRequiredException(
-                snapshot.statusMessage ?: "Keine aktive Audiobookshelf-Sitzung verfuegbar.",
+                snapshot.statusMessage ?: UserVisibleStatus.NO_ACTIVE_SESSION,
             )
         }
         return loadContextOrNull()
-            ?: throw AuthenticationRequiredException("Keine aktive Audiobookshelf-Sitzung verfuegbar.")
+            ?: throw AuthenticationRequiredException(UserVisibleStatus.NO_ACTIVE_SESSION)
     }
 
     private suspend fun refreshContext(cause: ApiException): AuthenticatedRequestContext {
@@ -55,13 +56,13 @@ class AuthenticatedRequestRunner(
             ?: authRepository.bootstrap()
         if (!snapshot.isAuthenticated) {
             throw AuthenticationRequiredException(
-                message = snapshot.statusMessage ?: "Sitzung abgelaufen. Bitte erneut anmelden.",
+                message = snapshot.statusMessage ?: UserVisibleStatus.SESSION_EXPIRED,
                 cause = cause,
             )
         }
         return loadContextOrNull()
             ?: throw AuthenticationRequiredException(
-                message = "Keine aktive Audiobookshelf-Sitzung verfuegbar.",
+                message = UserVisibleStatus.NO_ACTIVE_SESSION,
                 cause = cause,
             )
     }

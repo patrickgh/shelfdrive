@@ -73,7 +73,6 @@
     <string name="settings_diagnostics_upload_confirm">Send diagnostics</string>
     <string name="media_action_rewind_15">Back 15 seconds</string>
     <string name="media_action_forward_15">Forward 15 seconds</string>
-    <string name="media_action_playback_speed">Playback speed</string>
     <string name="media_action_playback_speed_value">Playback speed %1$s</string>
     <string name="settings_library_count_unknown">No catalog data yet</string>
     <string name="settings_catalog_counts">%1$d libraries · %2$d audiobooks · %3$d authors</string>
@@ -87,7 +86,6 @@
     <string name="status_server_unreachable">Server is currently unreachable. Content may be outdated.</string>
     <string name="status_catalog_sync_failed">Server is unreachable. The last catalog remains available.</string>
     <string name="status_session_expired">Session expired. Please sign in again.</string>
-    <string name="status_server_version_unknown">Server version could not be verified.</string>
     <string name="status_server_version_unparseable">Server version %1$s could not be parsed cleanly.</string>
     <string name="status_server_version_unsupported">Audiobookshelf %1$s is not supported in v1. Version 2.31.0 or newer is required.</string>
     <string name="status_login_fields_required">URL, username, and password are required.</string>
@@ -106,18 +104,13 @@
     <string name="media_root_authors">Authors</string>
     <string name="media_auth_required_title">Login required</string>
     <string name="media_auth_required_summary">Please sign in from Settings.</string>
-    <string name="media_open_settings_action">Open Settings</string>
     <string name="media_session_expired_title">Session expired</string>
     <string name="media_session_expired_summary">Please sign in again from Settings.</string>
     <string name="media_login_failed_title">Login failed</string>
-    <string name="media_login_failed_summary">Check URL, username, and password.</string>
     <string name="media_connection_problem_title">Connection problem</string>
-    <string name="media_connection_problem_summary">Server is currently unreachable. Content may be outdated.</string>
     <string name="media_settings_hint">Please check the connection in Settings.</string>
     <string name="media_sync_running_title">Sync in progress</string>
     <string name="media_sync_running_summary">The catalog is currently loading from the server.</string>
-    <string name="media_sync_failed_title">Sync failed</string>
-    <string name="media_sync_failed_summary">The local catalog could not be updated.</string>
     <string name="media_recent_empty_title">Nothing started yet</string>
     <string name="media_recent_empty_summary">Audiobooks started on the server will appear here.</string>
     <string name="media_books_empty_title">No audiobooks found</string>
@@ -129,10 +122,4 @@
     <string name="media_author_missing_title">Author not found</string>
     <string name="media_author_missing_summary">The selected author is no longer available in the local catalog.</string>
     <string name="media_author_books_empty_summary">There are currently no playable audiobooks for this author in the catalog.</string>
-    <string name="playback_notification_channel_name">ShelfDrive playback</string>
-    <string name="playback_notification_channel_description">Active audiobook playback</string>
-    <string name="playback_notification_play">Play</string>
-    <string name="playback_notification_pause">Pause</string>
-    <string name="playback_notification_previous">Back</string>
-    <string name="playback_notification_next">Next</string>
 </resources>

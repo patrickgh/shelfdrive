@@ -45,7 +45,7 @@ class CatalogSyncRepository(
 
     suspend fun syncNow(): SyncSnapshot = withContext(Dispatchers.IO) {
         val previous = loadSnapshot()
-        val runningSnapshot = previous.copy(status = SyncStatus.RUNNING, message = "Synchronisierung läuft.")
+        val runningSnapshot = previous.copy(status = SyncStatus.RUNNING, message = UserVisibleStatus.CATALOG_SYNC_RUNNING)
         persistSyncState(runningSnapshot)
 
         return@withContext try {

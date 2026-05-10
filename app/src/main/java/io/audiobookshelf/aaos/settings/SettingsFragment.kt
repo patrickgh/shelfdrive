@@ -24,6 +24,7 @@ import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadSnapshot
 import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadStatus
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsSnapshot
+import io.audiobookshelf.aaos.status.UserVisibleStatus
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
 import java.text.DateFormat
@@ -497,20 +498,20 @@ class SettingsFragment : PreferenceFragmentCompat() {
             ?.let { return getString(R.string.status_server_version_unsupported, it.groupValues[1]) }
 
         return when (message) {
-            "Server momentan nicht erreichbar. Inhalte können veraltet sein." ->
+            UserVisibleStatus.SERVER_UNREACHABLE ->
                 getString(R.string.status_server_unreachable)
-            "Server nicht erreichbar. Der letzte Katalogstand bleibt verfügbar." ->
+            UserVisibleStatus.CATALOG_SYNC_FAILED ->
                 getString(R.string.status_catalog_sync_failed)
-            "Sitzung abgelaufen. Bitte erneut anmelden." ->
+            UserVisibleStatus.SESSION_EXPIRED ->
                 getString(R.string.status_session_expired)
-            "URL, Benutzername und Passwort werden benötigt." ->
+            UserVisibleStatus.LOGIN_FIELDS_REQUIRED ->
                 getString(R.string.status_login_fields_required)
-            "Login-Antwort enthält kein Zugriffstoken.",
+            UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
             "Login-Antwort enthaelt kein Zugriffstoken." ->
                 getString(R.string.status_login_missing_access_token)
-            "Refresh-Antwort enthaelt kein Zugriffstoken." ->
+            UserVisibleStatus.REFRESH_MISSING_ACCESS_TOKEN ->
                 getString(R.string.status_refresh_missing_access_token)
-            "Server nicht erreichbar oder Antwort ungueltig." ->
+            UserVisibleStatus.SERVER_UNREACHABLE_OR_INVALID ->
                 getString(R.string.status_server_unreachable_or_invalid)
             "Server-URL ist ungueltig." ->
                 getString(R.string.status_server_url_invalid)
@@ -529,7 +530,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun isServerVersionVerificationWarning(message: String): Boolean {
-        return message == "Serverversion konnte nicht verifiziert werden." ||
+        return message == UserVisibleStatus.SERVER_VERSION_UNKNOWN ||
             message == "Server version could not be verified."
     }
 

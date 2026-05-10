@@ -1,5 +1,7 @@
 package io.audiobookshelf.aaos.absapi
 
+import io.audiobookshelf.aaos.status.UserVisibleStatus
+
 object ServerCompatibility {
     private val minimumSupportedVersion = ServerVersion.parse("2.31.0")
         ?: error("Minimum server version must be parseable.")
@@ -9,7 +11,7 @@ object ServerCompatibility {
             return CompatibilityReport(
                 serverVersion = null,
                 isSupported = true,
-                warningMessage = "Serverversion konnte nicht verifiziert werden.",
+                warningMessage = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
             )
         }
 

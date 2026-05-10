@@ -345,7 +345,40 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> {
+            diagnosticEventLogger.record(
+                "browse_root_requested",
+                mapOf(
+                    "controllerPackage" to browser.packageName,
+                    "controllerUid" to browser.uid.toString(),
+                ),
+            )
             return Futures.immediateFuture(LibraryResult.ofItem(mediaCatalog.buildRootItem(), mediaCatalog.rootParams(params)))
+        }
+
+        override fun onSubscribe(
+            session: MediaLibrarySession,
+            browser: MediaSession.ControllerInfo,
+            parentId: String,
+            params: LibraryParams?,
+        ): ListenableFuture<LibraryResult<Void>> {
+            val effectiveParentId = parentId.normalizedBrowseParentId()
+            diagnosticEventLogger.record(
+                "browse_subscribed",
+                mapOf(
+                    "controllerPackage" to browser.packageName,
+                    "controllerUid" to browser.uid.toString(),
+                    "parentId" to parentId,
+                    "effectiveParentId" to effectiveParentId,
+                ),
+            )
+            if (effectiveParentId.isTopLevelBrowseParentId()) {
+                scheduleBrowseTreeRefresh(
+                    reason = "subscribed:$effectiveParentId",
+                    controller = browser,
+                    parentId = effectiveParentId,
+                )
+            }
+            return Futures.immediateFuture(LibraryResult.ofVoid(params))
         }
 
         override fun onGetItem(
@@ -372,8 +405,30 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             return serviceFuture("getChildren:$parentId") {
-                val children = mediaCatalog.loadChildren(parentId)
-                LibraryResult.ofItemList(mediaCatalog.pageItems(children, page, pageSize), params)
+                val effectiveParentId = parentId.normalizedBrowseParentId()
+                val children = mediaCatalog.loadChildren(effectiveParentId)
+                val node = BrowseNodeId.parse(effectiveParentId)
+                val items = if (node == BrowseNodeId.Root) {
+                    children
+                } else {
+                    mediaCatalog.pageItems(children, page, pageSize)
+                }
+                diagnosticEventLogger.record(
+                    "browse_children_loaded",
+                    mapOf(
+                        "controllerPackage" to browser.packageName,
+                        "parentId" to parentId,
+                        "effectiveParentId" to effectiveParentId,
+                        "page" to page.toString(),
+                        "pageSize" to pageSize.toString(),
+                        "children" to children.size.toString(),
+                        "returned" to items.size.toString(),
+                    ),
+                )
+                LibraryResult.ofItemList(
+                    items,
+                    if (node == BrowseNodeId.Root) mediaCatalog.rootParams(params) else params,
+                )
             }
         }
 
@@ -406,6 +461,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             }
         }
 
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>,
+        ): ListenableFuture<List<MediaItem>> {
+            return serviceFuture("addMediaItems") {
+                enrichRequestedMediaItems(mediaItems, controller)
+            }
+        }
+
         override fun onSetMediaItems(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
@@ -414,7 +479,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             startPositionMs: Long,
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             return serviceFuture("setMediaItems") {
-                val requestedItem = mediaItems.firstOrNull()
+                val enrichedMediaItems = enrichRequestedMediaItems(mediaItems, controller)
+                val requestedItem = enrichedMediaItems.getOrNull(startIndex.takeIf { it >= 0 } ?: 0)
+                    ?: enrichedMediaItems.firstOrNull()
                     ?: throw PlaybackResolutionException("Kein Medium ausgewaehlt.")
                 Log.i(TAG, "Host requested playback for mediaId=${requestedItem.mediaId}.")
                 publishRequestedPlaybackPlaceholder(requestedItem)
@@ -1357,10 +1424,131 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (!this::mediaLibrarySession.isInitialized) {
             return
         }
-        mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Root.serialize(), Int.MAX_VALUE, null)
+        notifyBrowseTreeChangedGlobally()
+        mediaLibrarySession.connectedControllers
+            .filter { it.packageName != packageName }
+            .forEach { controller ->
+                notifyBrowseTreeChanged(controller)
+            }
+    }
+
+    private fun notifyBrowseTreeChangedGlobally() {
+        mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Root.serialize(), ROOT_CHILD_COUNT, mediaCatalog.rootParams(null))
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
+    }
+
+    private fun notifyBrowseTreeChanged(
+        controller: MediaSession.ControllerInfo,
+        parentId: String? = null,
+    ) {
+        val effectiveParentId = parentId?.normalizedBrowseParentId()
+        val parentIds = if (effectiveParentId == null || effectiveParentId == BrowseNodeId.Root.serialize()) {
+            TOP_LEVEL_BROWSE_PARENT_IDS
+        } else {
+            listOf(effectiveParentId)
+        }
+        parentIds.forEach { id ->
+            val count = if (id == BrowseNodeId.Root.serialize()) ROOT_CHILD_COUNT else Int.MAX_VALUE
+            val params = if (id == BrowseNodeId.Root.serialize()) mediaCatalog.rootParams(null) else null
+            mediaLibrarySession.notifyChildrenChanged(controller, id, count, params)
+            if (BROWSE_SEARCH_REFRESH_WORKAROUND_ENABLED && id.isTopLevelBrowseParentId()) {
+                mediaLibrarySession.notifySearchResultChanged(controller, id, count, params)
+            }
+        }
+        diagnosticEventLogger.record(
+            "browse_tree_controller_refreshed",
+            mapOf(
+                "controllerPackage" to controller.packageName,
+                "controllerUid" to controller.uid.toString(),
+                "parentId" to (effectiveParentId ?: "all"),
+                "searchRefresh" to BROWSE_SEARCH_REFRESH_WORKAROUND_ENABLED.toString(),
+            ),
+        )
+    }
+
+    private fun scheduleBrowseTreeRefresh(
+        reason: String,
+        controller: MediaSession.ControllerInfo? = null,
+        parentId: String? = null,
+    ) {
+        if (!this::mediaLibrarySession.isInitialized) {
+            return
+        }
+        serviceScope.launch {
+            delay(BROWSE_REFRESH_DELAY_MS)
+            if (controller == null) {
+                notifyBrowseTreeChanged()
+            } else {
+                notifyBrowseTreeChanged(controller, parentId)
+            }
+            diagnosticEventLogger.record(
+                "browse_tree_refreshed",
+                mapOf(
+                    "reason" to reason,
+                    "controllerPackage" to (controller?.packageName ?: "all"),
+                    "parentId" to (parentId ?: "all"),
+                ),
+            )
+        }
+    }
+
+    private fun String.normalizedBrowseParentId(): String {
+        return trim().takeIf { it.isNotBlank() && BrowseNodeId.parse(it) != null }
+            ?: BrowseNodeId.Root.serialize()
+    }
+
+    private fun String.isTopLevelBrowseParentId(): Boolean {
+        return this in TOP_LEVEL_BROWSE_PARENT_IDS
+    }
+
+    private suspend fun enrichRequestedMediaItems(
+        mediaItems: List<MediaItem>,
+        controller: MediaSession.ControllerInfo,
+    ): List<MediaItem> {
+        if (mediaItems.isEmpty()) {
+            diagnosticEventLogger.record(
+                "media_items_enriched",
+                mapOf(
+                    "controllerPackage" to controller.packageName,
+                    "requested" to "0",
+                    "enriched" to "0",
+                    "fallback" to "0",
+                ),
+            )
+            return emptyList()
+        }
+
+        var enrichedCount = 0
+        var fallbackCount = 0
+        val enrichedItems = mediaItems.mapNotNull { item ->
+            val enriched = mediaCatalog.loadItem(item.mediaId)
+            if (enriched != null) {
+                enrichedCount += 1
+                enriched
+            } else {
+                fallbackCount += 1
+                diagnosticEventLogger.record(
+                    "media_items_enrich_failed",
+                    mapOf(
+                        "controllerPackage" to controller.packageName,
+                        "mediaId" to item.mediaId,
+                    ),
+                )
+                item.takeIf { it.mediaId.isNotBlank() }
+            }
+        }
+        diagnosticEventLogger.record(
+            "media_items_enriched",
+            mapOf(
+                "controllerPackage" to controller.packageName,
+                "requested" to mediaItems.size.toString(),
+                "enriched" to enrichedCount.toString(),
+                "fallback" to fallbackCount.toString(),
+            ),
+        )
+        return enrichedItems
     }
 
     private fun <T> serviceFuture(
@@ -1382,11 +1570,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             label
         }
     }
-
-    private val PlaybackProgressReason.shouldRefreshBrowse: Boolean
-        get() = this == PlaybackProgressReason.PAUSED ||
-            this == PlaybackProgressReason.STOPPED ||
-            this == PlaybackProgressReason.ENDED
 
     private fun ResolvedAudiobookPlayback.logicalStartPositionMs(): Long {
         val track = queue.getOrNull(startIndex)
@@ -1445,6 +1628,15 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         private const val PRE_CACHE_TRACKS_AHEAD = 1
         private const val PRE_CACHE_START_DELAY_MS = 1_500L
         private const val REMOTE_FORWARD_CORRECTION_THRESHOLD_MS = 90_000L
+        private const val BROWSE_REFRESH_DELAY_MS = 750L
+        private const val ROOT_CHILD_COUNT = 3
+        private const val BROWSE_SEARCH_REFRESH_WORKAROUND_ENABLED = true
+        private val TOP_LEVEL_BROWSE_PARENT_IDS = listOf(
+            BrowseNodeId.Root.serialize(),
+            BrowseNodeId.Recent.serialize(),
+            BrowseNodeId.Books.serialize(),
+            BrowseNodeId.Authors.serialize(),
+        )
         private val PLACEHOLDER_PLAYBACK_RETRY_DELAYS_MS = listOf(2_000L, 5_000L, 10_000L, 20_000L)
         private val TRANSIENT_PLAYBACK_RETRY_DELAYS_MS = listOf(1_000L, 3_000L, 8_000L, 15_000L)
         private val TRANSIENT_HTTP_STATUS_CODES = setOf(502, 503, 504)

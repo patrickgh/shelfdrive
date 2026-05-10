@@ -12,6 +12,14 @@
         <package android:name="com.android.vending" />
         <package android:name="com.google.android.gms" />
         <package android:name="com.android.car.media" />
+        <package android:name="com.google.android.apps.automotive.templates.host" />
+        <package android:name="com.google.android.projection.gearhead" />
+        <intent>
+            <action android:name="android.car.intent.action.MEDIA_TEMPLATE" />
+        </intent>
+        <intent>
+            <action android:name="androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2" />
+        </intent>
     </queries>
 
     <application
@@ -26,6 +34,7 @@
         android:roundIcon="@drawable/ic_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.AbsAaos"
+        tools:targetApi="tiramisu"
         android:usesCleartextTraffic="true">
 
         <meta-data

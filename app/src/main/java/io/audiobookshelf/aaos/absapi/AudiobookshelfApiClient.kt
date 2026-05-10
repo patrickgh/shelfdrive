@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.absapi
 
 import io.audiobookshelf.aaos.BuildConfig
+import io.audiobookshelf.aaos.status.UserVisibleStatus
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -427,7 +428,7 @@ class AudiobookshelfApiClient(
                     accessToken = accessToken,
                     refreshToken = null,
                     serverVersion = null,
-                    compatibilityWarning = "Serverversion konnte nicht verifiziert werden.",
+                    compatibilityWarning = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
                     isSupported = true,
                 ),
             )

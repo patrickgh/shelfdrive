@@ -113,7 +113,7 @@ class AuthRepository(
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
-                statusMessage = "URL, Benutzername und Passwort werden benötigt.",
+                statusMessage = UserVisibleStatus.LOGIN_FIELDS_REQUIRED,
                 hasStoredPassword = !stored.password.isNullOrBlank(),
             )
         }
@@ -137,7 +137,7 @@ class AuthRepository(
                     baseUrl = baseUrl,
                     username = session.username,
                     serverVersion = session.serverVersion,
-                    statusMessage = "Login-Antwort enthält kein Zugriffstoken.",
+                    statusMessage = UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
                     hasStoredPassword = !stored.password.isNullOrBlank(),
                 )
 
@@ -178,7 +178,7 @@ class AuthRepository(
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
-                statusMessage = "Server nicht erreichbar oder Antwort ungueltig.",
+                statusMessage = UserVisibleStatus.SERVER_UNREACHABLE_OR_INVALID,
                 hasStoredPassword = !stored.password.isNullOrBlank(),
             )
         }
@@ -355,7 +355,7 @@ class AuthRepository(
                     baseUrl = baseUrl,
                     username = session.username,
                     serverVersion = session.serverVersion,
-                    statusMessage = "Login-Antwort enthält kein Zugriffstoken.",
+                    statusMessage = UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
                     hasStoredPassword = true,
                 )
             }
