@@ -2,6 +2,8 @@ package io.audiobookshelf.aaos.playback
 
 import android.content.Context
 import android.net.Uri
+import org.json.JSONArray
+import org.json.JSONObject
 
 class PlaybackStateStorage(context: Context) {
     private val sharedPreferences = context.applicationContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
@@ -23,6 +25,7 @@ class PlaybackStateStorage(context: Context) {
                 .takeIf { it >= 0L },
             positionMs = sharedPreferences.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
             trackIndex = sharedPreferences.getInt(KEY_TRACK_INDEX, 0).coerceAtLeast(0),
+            queue = decodeQueue(sharedPreferences.getString(KEY_QUEUE, null)),
             playbackSpeed = sharedPreferences.getFloat(KEY_PLAYBACK_SPEED, 1f)
                 .takeIf { it.isFinite() && it > 0f }
                 ?: 1f,
@@ -40,6 +43,7 @@ class PlaybackStateStorage(context: Context) {
             .putLong(KEY_DURATION_MS, state.durationMs ?: UNKNOWN_DURATION_MS)
             .putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
             .putInt(KEY_TRACK_INDEX, state.trackIndex.coerceAtLeast(0))
+            .putString(KEY_QUEUE, encodeQueue(state.queue))
             .putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
             .putBoolean(KEY_WAS_PLAYING, state.wasPlaying)
             .putLong(KEY_UPDATED_AT, state.updatedAt)
@@ -48,6 +52,58 @@ class PlaybackStateStorage(context: Context) {
 
     fun clear() {
         sharedPreferences.edit().clear().apply()
+    }
+
+    private fun encodeQueue(queue: List<StoredPlaybackTrack>): String? {
+        if (queue.isEmpty()) {
+            return null
+        }
+        val array = JSONArray()
+        queue.forEach { track ->
+            array.put(
+                JSONObject()
+                    .put("id", track.id)
+                    .put("title", track.title)
+                    .put("contentUrl", track.contentUrl)
+                    .put("mimeType", track.mimeType)
+                    .put("durationMs", track.durationMs)
+                    .put("startOffsetMs", track.startOffsetMs),
+            )
+        }
+        return array.toString()
+    }
+
+    private fun decodeQueue(raw: String?): List<StoredPlaybackTrack> {
+        if (raw.isNullOrBlank()) {
+            return emptyList()
+        }
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val contentUrl = item.optString("contentUrl").takeIf { it.isNotBlank() } ?: continue
+                    add(
+                        StoredPlaybackTrack(
+                            id = id,
+                            title = item.optString("title").takeIf { it.isNotBlank() } ?: "Hoerbuch ${index + 1}",
+                            contentUrl = contentUrl,
+                            mimeType = item.optString("mimeType").takeIf { it.isNotBlank() },
+                            durationMs = item.optLongOrNull("durationMs"),
+                            startOffsetMs = item.optLong("startOffsetMs", 0L).coerceAtLeast(0L),
+                        ),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun JSONObject.optLongOrNull(name: String): Long? {
+        if (!has(name) || isNull(name)) {
+            return null
+        }
+        return optLong(name).takeIf { it >= 0L }
     }
 
     companion object {
@@ -59,6 +115,7 @@ class PlaybackStateStorage(context: Context) {
         private const val KEY_DURATION_MS = "duration_ms"
         private const val KEY_POSITION_MS = "position_ms"
         private const val KEY_TRACK_INDEX = "track_index"
+        private const val KEY_QUEUE = "queue"
         private const val KEY_PLAYBACK_SPEED = "playback_speed"
         private const val KEY_WAS_PLAYING = "was_playing"
         private const val KEY_UPDATED_AT = "updated_at"
@@ -74,7 +131,17 @@ data class StoredPlaybackState(
     val durationMs: Long? = null,
     val positionMs: Long,
     val trackIndex: Int = 0,
+    val queue: List<StoredPlaybackTrack> = emptyList(),
     val playbackSpeed: Float,
     val wasPlaying: Boolean,
     val updatedAt: Long,
+)
+
+data class StoredPlaybackTrack(
+    val id: String,
+    val title: String,
+    val contentUrl: String,
+    val mimeType: String?,
+    val durationMs: Long?,
+    val startOffsetMs: Long,
 )

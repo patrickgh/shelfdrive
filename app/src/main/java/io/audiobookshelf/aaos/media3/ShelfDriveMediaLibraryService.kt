@@ -13,6 +13,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -53,7 +54,9 @@ import io.audiobookshelf.aaos.playback.PlaybackSnapshotPolicy
 import io.audiobookshelf.aaos.playback.PlaybackStateStorage
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlayback
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlaybackSession
+import io.audiobookshelf.aaos.playback.ResolvedPlaybackTrack
 import io.audiobookshelf.aaos.playback.StoredPlaybackState
+import io.audiobookshelf.aaos.playback.StoredPlaybackTrack
 import io.audiobookshelf.aaos.progress.PlaybackProgressReason
 import io.audiobookshelf.aaos.progress.PlaybackProgressSnapshot
 import io.audiobookshelf.aaos.progress.ProgressSyncRepository
@@ -98,6 +101,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var activeAccessToken: String? = null
     private var periodicProgressJob: Job? = null
     private var playbackRecoveryJob: Job? = null
+    private var playbackPreCacheJob: Job? = null
+    private var optimisticPlaybackActive: Boolean = false
     private var transientPlaybackRetryAttempt: Int = 0
     private var wasPlayWhenReady: Boolean = false
     private var placeholderPlaybackState: StoredPlaybackState? = null
@@ -219,6 +224,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
         periodicProgressJob?.cancel()
         playbackRecoveryJob?.cancel()
+        playbackPreCacheJob?.cancel()
         mediaLibrarySession.release()
         player.removeListener(this)
         player.release()
@@ -251,6 +257,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (playbackState == Player.STATE_READY) {
             transientPlaybackRetryAttempt = 0
             saveActivePlaybackState()
+            warmPlaybackCache("player_ready")
         }
     }
 
@@ -261,12 +268,14 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     ) {
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {
             emitProgress(PlaybackProgressReason.SEEKED)
+            warmPlaybackCache("seek")
         }
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
             emitProgress(PlaybackProgressReason.TRACK_CHANGED)
+            warmPlaybackCache("track_changed")
         }
     }
 
@@ -418,6 +427,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 placeholderPlaybackState = null
                 configureAuthenticatedPlayback(playback.accessToken)
                 transientPlaybackRetryAttempt = 0
+                optimisticPlaybackActive = false
+                warmPlaybackCache(playback.playback, playback.accessToken, playback.playback.logicalStartPositionMs(), "set_media_items")
                 MediaSession.MediaItemsWithStartPosition(
                     playback.playback.toMedia3PlayableItems(),
                     playback.playback.startIndex,
@@ -449,6 +460,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                         "wasPlaying" to stored.wasPlaying.toString(),
                     ),
                 )
+
+                restoreOptimisticPlayback(stored, playWhenReady = isForPlayback, source = "playback_resumption")?.let { optimistic ->
+                    reconcileOptimisticPlayback(stored, source = "playback_resumption")
+                    return@serviceFuture optimistic
+                }
 
                 resolveStoredPlaybackForSession(stored)
                     ?: run {
@@ -581,6 +597,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             configureAuthenticatedPlayback(resolved.accessToken)
             transientPlaybackRetryAttempt = 0
             placeholderPlaybackState = null
+            optimisticPlaybackActive = false
+            warmPlaybackCache(resolved.playback, resolved.accessToken, stored.positionMs, "playback_resumption")
             player.setPlaybackParameters(
                 PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
             )
@@ -611,6 +629,126 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             Log.w(TAG, "Could not resolve playback resumption for book=${stored.bookId}.", exception)
             null
         }
+    }
+
+    private fun restoreOptimisticPlayback(
+        stored: StoredPlaybackState,
+        playWhenReady: Boolean,
+        source: String,
+    ): MediaSession.MediaItemsWithStartPosition? {
+        val accessToken = authStorage.load().accessToken?.takeIf { it.isNotBlank() } ?: return null
+        val playback = stored.toResolvedPlayback() ?: return null
+        val startPosition = PlaybackQueueMath.locateStartPosition(playback.queue, stored.positionMs)
+        activeBook = playback
+        configureAuthenticatedPlayback(accessToken)
+        transientPlaybackRetryAttempt = 0
+        placeholderPlaybackState = null
+        optimisticPlaybackActive = true
+        player.setMediaItems(
+            playback.toMedia3PlayableItems(),
+            startPosition.trackIndex,
+            startPosition.positionMs,
+        )
+        player.setPlaybackParameters(
+            PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
+        )
+        player.prepare()
+        player.playWhenReady = playWhenReady
+        saveActivePlaybackState(wasPlaying = playWhenReady)
+        warmPlaybackCache(playback, accessToken, stored.positionMs, "optimistic_$source")
+        diagnosticEventLogger.record(
+            "playback_optimistic_restored",
+            mapOf(
+                "source" to source,
+                "bookId" to playback.bookId,
+                "trackIndex" to startPosition.trackIndex.toString(),
+                "positionMs" to startPosition.positionMs.toString(),
+                "playWhenReady" to playWhenReady.toString(),
+            ),
+        )
+        return MediaSession.MediaItemsWithStartPosition(
+            playback.toMedia3PlayableItems(),
+            startPosition.trackIndex,
+            startPosition.positionMs,
+        )
+    }
+
+    private fun reconcileOptimisticPlayback(stored: StoredPlaybackState, source: String) {
+        if (playbackRecoveryJob?.isActive == true) {
+            return
+        }
+        playbackRecoveryJob = serviceScope.launch {
+            runCatching {
+                val resolved = playbackRepository.resolveBook(stored.bookId)
+                reconcileResolvedPlayback(resolved, stored, source)
+            }.onFailure { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                diagnosticEventLogger.record(
+                    "playback_optimistic_reconcile_failed",
+                    mapOf(
+                        "source" to source,
+                        "category" to exception.restoreFailureCategory(),
+                        "exception" to exception::class.java.simpleName,
+                        "message" to exception.message,
+                    ),
+                )
+                Log.w(TAG, "Could not reconcile optimistic playback for book=${stored.bookId}.", exception)
+            }
+        }
+    }
+
+    private fun reconcileResolvedPlayback(
+        resolved: ResolvedAudiobookPlaybackSession,
+        stored: StoredPlaybackState,
+        source: String,
+    ) {
+        val currentBook = activeBook
+        if (currentBook?.bookId != stored.bookId) {
+            return
+        }
+        if (!optimisticPlaybackActive) {
+            return
+        }
+        val localPositionMs = logicalPlaybackPositionMs()
+        val remotePositionMs = resolved.playback.logicalStartPositionMs()
+        val correctionMs = remotePositionMs - localPositionMs
+        val targetPositionMs = if (correctionMs > REMOTE_FORWARD_CORRECTION_THRESHOLD_MS) {
+            remotePositionMs
+        } else {
+            localPositionMs
+        }
+        val startPosition = PlaybackQueueMath.locateStartPosition(resolved.playback.queue, targetPositionMs)
+        val resumePlayWhenReady = player.playWhenReady
+        activeBook = resolved.playback
+        configureAuthenticatedPlayback(resolved.accessToken)
+        transientPlaybackRetryAttempt = 0
+        optimisticPlaybackActive = false
+        player.setMediaItems(
+            resolved.playback.toMedia3PlayableItems(),
+            startPosition.trackIndex,
+            startPosition.positionMs,
+        )
+        player.setPlaybackParameters(
+            PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
+        )
+        player.prepare()
+        player.playWhenReady = resumePlayWhenReady
+        saveActivePlaybackState(wasPlaying = resumePlayWhenReady)
+        warmPlaybackCache(resolved.playback, resolved.accessToken, targetPositionMs, "optimistic_reconcile")
+        diagnosticEventLogger.record(
+            "playback_optimistic_reconciled",
+            mapOf(
+                "source" to source,
+                "bookId" to resolved.playback.bookId,
+                "localPositionMs" to localPositionMs.toString(),
+                "remotePositionMs" to remotePositionMs.toString(),
+                "correctionMs" to correctionMs.toString(),
+                "remoteApplied" to (targetPositionMs == remotePositionMs).toString(),
+            ),
+        )
+        Log.i(TAG, "Reconciled optimistic playback for book=${resolved.playback.bookId}, correctionMs=$correctionMs.")
     }
 
     private suspend fun resolveRequestedPlayback(requestedItem: MediaItem): ResolvedAudiobookPlaybackSession {
@@ -686,6 +824,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
         diagnosticsStorage.recordRestoreStarted(stored.bookId)
         diagnosticEventLogger.record("restore_started", mapOf("hasBookId" to "true"))
+        if (restoreOptimisticPlayback(stored, playWhenReady = false, source = "startup_restore") != null) {
+            diagnosticEventLogger.record("restore_optimistic_started")
+        }
         val restoreCompleted = CompletableDeferred<Unit>()
         val restoreJob = serviceScope.launch {
             try {
@@ -726,6 +867,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             activeBook = resolved.playback
             configureAuthenticatedPlayback(resolved.accessToken)
             transientPlaybackRetryAttempt = 0
+            optimisticPlaybackActive = false
+            warmPlaybackCache(resolved.playback, resolved.accessToken, stored.positionMs, "restore")
             player.setMediaItems(
                 resolved.playback.toMedia3PlayableItems(),
                 startPosition.trackIndex,
@@ -838,6 +981,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         activeBook = resolved.playback
         configureAuthenticatedPlayback(resolved.accessToken)
         transientPlaybackRetryAttempt = 0
+        optimisticPlaybackActive = false
+        warmPlaybackCache(resolved.playback, resolved.accessToken, stored.positionMs, "placeholder_restore")
         player.setMediaItems(
             resolved.playback.toMedia3PlayableItems(),
             startPosition.trackIndex,
@@ -870,6 +1015,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 activeBook = playback.playback
                 configureAuthenticatedPlayback(playback.accessToken)
                 transientPlaybackRetryAttempt = 0
+                optimisticPlaybackActive = false
+                warmPlaybackCache(playback.playback, playback.accessToken, resumePositionMs, "unauthorized_recovery")
                 player.setMediaItems(
                     playback.playback.toMedia3PlayableItems(),
                     startPosition.trackIndex,
@@ -911,6 +1058,79 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 Log.w(TAG, "Transient playback retry failed for book=${currentBook.bookId}.", exception)
             }
         }
+    }
+
+    private fun warmPlaybackCache(reason: String) {
+        val playback = activeBook ?: return
+        val accessToken = activeAccessToken ?: return
+        warmPlaybackCache(playback, accessToken, logicalPlaybackPositionMs(), reason)
+    }
+
+    private fun warmPlaybackCache(
+        playback: ResolvedAudiobookPlayback,
+        accessToken: String,
+        logicalPositionMs: Long,
+        reason: String,
+    ) {
+        val startPosition = PlaybackQueueMath.locateStartPosition(playback.queue, logicalPositionMs)
+        val requests = (startPosition.trackIndex..(startPosition.trackIndex + PRE_CACHE_TRACKS_AHEAD))
+            .mapNotNull { trackIndex ->
+                val track = playback.queue.getOrNull(trackIndex) ?: return@mapNotNull null
+                PlaybackAudioCache.PreCacheRequest(
+                    uri = track.contentUrl,
+                    cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, track.id),
+                    positionMs = if (trackIndex == startPosition.trackIndex) startPosition.positionMs else 0L,
+                    durationMs = track.durationMs,
+                )
+            }
+        if (requests.isEmpty()) {
+            return
+        }
+
+        playbackPreCacheJob?.cancel()
+        playbackPreCacheJob = serviceScope.launch(Dispatchers.IO) {
+            delay(PRE_CACHE_START_DELAY_MS)
+            runCatching {
+                PlaybackAudioCache.preCache(
+                    context = applicationContext,
+                    upstreamFactory = authenticatedDataSourceFactory(accessToken),
+                    requests = requests,
+                )
+            }.onSuccess { results ->
+                diagnosticEventLogger.record(
+                    "playback_precache_finished",
+                    mapOf(
+                        "reason" to reason,
+                        "bookId" to playback.bookId,
+                        "tracks" to results.size.toString(),
+                        "startBytes" to results.joinToString(",") { it.startByte.toString() },
+                        "requestedBytes" to results.sumOf { it.requestedBytes }.toString(),
+                    ),
+                )
+                Log.i(TAG, "Pre-cached ${results.size} playback track window(s) for book=${playback.bookId} reason=$reason.")
+            }.onFailure { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                diagnosticEventLogger.record(
+                    "playback_precache_failed",
+                    mapOf(
+                        "reason" to reason,
+                        "bookId" to playback.bookId,
+                        "exception" to exception::class.java.simpleName,
+                        "message" to exception.message,
+                    ),
+                )
+                Log.w(TAG, "Playback pre-cache failed for book=${playback.bookId} reason=$reason.", exception)
+            }
+        }
+    }
+
+    private fun authenticatedDataSourceFactory(accessToken: String): DataSource.Factory {
+        val httpFactory = DefaultHttpDataSource.Factory()
+        httpFactory.setUserAgent("ShelfDrive/${BuildConfig.VERSION_NAME}")
+        httpFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
+        return DefaultDataSource.Factory(this, httpFactory)
     }
 
     private fun configureAuthenticatedPlayback(accessToken: String) {
@@ -1013,6 +1233,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 durationMs = playback.durationMs,
                 positionMs = logicalPlaybackPositionMs(),
                 trackIndex = player.currentMediaItemIndex.coerceAtLeast(0),
+                queue = playback.queue.map { it.toStoredPlaybackTrack() },
                 playbackSpeed = player.playbackParameters.speed,
                 wasPlaying = wasPlaying,
                 updatedAt = System.currentTimeMillis(),
@@ -1170,11 +1391,63 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             this == PlaybackProgressReason.STOPPED ||
             this == PlaybackProgressReason.ENDED
 
+    private fun ResolvedAudiobookPlayback.logicalStartPositionMs(): Long {
+        val track = queue.getOrNull(startIndex)
+        return ((track?.startOffsetMs ?: 0L) + startPositionMs).coerceAtLeast(0L)
+    }
+
+    private fun StoredPlaybackState.toResolvedPlayback(): ResolvedAudiobookPlayback? {
+        val resolvedQueue = queue.mapNotNull { it.toResolvedPlaybackTrack() }
+        if (resolvedQueue.isEmpty()) {
+            return null
+        }
+        val startPosition = PlaybackQueueMath.locateStartPosition(resolvedQueue, positionMs)
+        return ResolvedAudiobookPlayback(
+            bookId = bookId,
+            title = title ?: "Hoerbuch",
+            author = author,
+            coverPath = null,
+            artworkUri = artworkUri,
+            durationMs = durationMs,
+            queue = resolvedQueue,
+            startIndex = startPosition.trackIndex,
+            startPositionMs = startPosition.positionMs,
+        )
+    }
+
+    private fun StoredPlaybackTrack.toResolvedPlaybackTrack(): ResolvedPlaybackTrack? {
+        if (id.isBlank() || contentUrl.isBlank()) {
+            return null
+        }
+        return ResolvedPlaybackTrack(
+            id = id,
+            title = title.ifBlank { "Hoerbuch" },
+            contentUrl = contentUrl,
+            mimeType = mimeType,
+            durationMs = durationMs,
+            startOffsetMs = startOffsetMs,
+        )
+    }
+
+    private fun ResolvedPlaybackTrack.toStoredPlaybackTrack(): StoredPlaybackTrack {
+        return StoredPlaybackTrack(
+            id = id,
+            title = title,
+            contentUrl = contentUrl,
+            mimeType = mimeType,
+            durationMs = durationMs,
+            startOffsetMs = startOffsetMs,
+        )
+    }
+
     companion object {
         private const val TAG = "ShelfDriveMedia3"
         private const val SEEK_INCREMENT_MS = 15_000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
         private const val RESTORE_TIMEOUT_MS = 8_000L
+        private const val PRE_CACHE_TRACKS_AHEAD = 1
+        private const val PRE_CACHE_START_DELAY_MS = 1_500L
+        private const val REMOTE_FORWARD_CORRECTION_THRESHOLD_MS = 90_000L
         private val PLACEHOLDER_PLAYBACK_RETRY_DELAYS_MS = listOf(2_000L, 5_000L, 10_000L, 20_000L)
         private val TRANSIENT_PLAYBACK_RETRY_DELAYS_MS = listOf(1_000L, 3_000L, 8_000L, 15_000L)
         private val TRANSIENT_HTTP_STATUS_CODES = setOf(502, 503, 504)
