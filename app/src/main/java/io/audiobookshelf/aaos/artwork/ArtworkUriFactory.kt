@@ -1,9 +1,10 @@
 package io.audiobookshelf.aaos.artwork
 
 import android.net.Uri
+import io.audiobookshelf.aaos.BuildConfig
 
 object ArtworkUriFactory {
-    private const val AUTHORITY = "io.shelfdrive.app.artwork"
+    private val authority = "${BuildConfig.APPLICATION_ID}.artwork"
 
     fun bookCover(bookId: String, signature: String?): Uri {
         return baseBuilder()
@@ -37,6 +38,6 @@ object ArtworkUriFactory {
     private fun baseBuilder(): Uri.Builder {
         return Uri.Builder()
             .scheme("content")
-            .authority(AUTHORITY)
+            .authority(authority)
     }
 }

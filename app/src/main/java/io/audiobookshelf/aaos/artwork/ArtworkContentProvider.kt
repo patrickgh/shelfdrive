@@ -6,6 +6,7 @@ import android.content.UriMatcher
 import android.database.Cursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.absapi.NetworkPolicy
 import io.audiobookshelf.aaos.auth.AuthStorage
 import java.io.File
@@ -121,10 +122,11 @@ class ArtworkContentProvider : ContentProvider() {
         private const val AUTHOR_IMAGE = 2
         private val SAFE_ID_REGEX = Regex("[A-Za-z0-9._-]{1,128}")
         private val SAFE_SIGNATURE_REGEX = Regex("[A-Fa-f0-9]{0,16}")
+        private val AUTHORITY = "${BuildConfig.APPLICATION_ID}.artwork"
 
         private val URI_MATCHER = UriMatcher(UriMatcher.NO_MATCH).apply {
-            addURI("io.shelfdrive.app.artwork", "books/*", BOOK_COVER)
-            addURI("io.shelfdrive.app.artwork", "authors/*", AUTHOR_IMAGE)
+            addURI(AUTHORITY, "books/*", BOOK_COVER)
+            addURI(AUTHORITY, "authors/*", AUTHOR_IMAGE)
         }
     }
 }

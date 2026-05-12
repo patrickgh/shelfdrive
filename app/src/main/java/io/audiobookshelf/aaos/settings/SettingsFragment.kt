@@ -515,6 +515,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.status_server_unreachable_or_invalid)
             "Server-URL ist ungueltig." ->
                 getString(R.string.status_server_url_invalid)
+            "Server-URL muss mit https:// beginnen.",
             "Server-URL muss mit https:// oder http:// beginnen." ->
                 getString(R.string.status_server_url_scheme_required)
             "Server-URL enthaelt keinen Host." ->
@@ -523,6 +524,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.status_server_url_credentials_forbidden)
             "Server-URL darf keine Query-Parameter oder Fragmente enthalten." ->
                 getString(R.string.status_server_url_query_forbidden)
+            "HTTP ist nicht erlaubt. Bitte HTTPS verwenden.",
             "HTTP ist nur fuer lokale oder private Server erlaubt. Fuer oeffentliche Server bitte HTTPS verwenden." ->
                 getString(R.string.status_server_url_public_http_forbidden)
             else -> message

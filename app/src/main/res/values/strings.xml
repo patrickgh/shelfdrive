@@ -93,11 +93,11 @@
     <string name="status_refresh_missing_access_token">Refresh response did not include an access token.</string>
     <string name="status_server_unreachable_or_invalid">Server is unreachable or returned an invalid response.</string>
     <string name="status_server_url_invalid">Server URL is invalid.</string>
-    <string name="status_server_url_scheme_required">Server URL must start with https:// or http://.</string>
+    <string name="status_server_url_scheme_required">Server URL must start with https://.</string>
     <string name="status_server_url_host_required">Server URL does not contain a host.</string>
     <string name="status_server_url_credentials_forbidden">Server URL must not include credentials.</string>
     <string name="status_server_url_query_forbidden">Server URL must not include query parameters or fragments.</string>
-    <string name="status_server_url_public_http_forbidden">HTTP is only allowed for local or private servers. Use HTTPS for public servers.</string>
+    <string name="status_server_url_public_http_forbidden">HTTP is not allowed. Use HTTPS.</string>
     <string name="account_error_bad_request">This account request is not supported.</string>
     <string name="media_root_recent">Recently listened</string>
     <string name="media_root_books">Audiobooks</string>

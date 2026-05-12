@@ -257,7 +257,6 @@ class DiagnosticsPackageBuilder(
             "com.google.android.gms",
             "com.android.car.media",
             "com.google.android.apps.automotive.templates.host",
-            "com.google.android.projection.gearhead",
         )
     }
 }

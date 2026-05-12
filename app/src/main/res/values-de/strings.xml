@@ -91,11 +91,11 @@
     <string name="status_refresh_missing_access_token">Refresh-Antwort enthält kein Zugriffstoken.</string>
     <string name="status_server_unreachable_or_invalid">Server nicht erreichbar oder Antwort ungültig.</string>
     <string name="status_server_url_invalid">Server-URL ist ungültig.</string>
-    <string name="status_server_url_scheme_required">Server-URL muss mit https:// oder http:// beginnen.</string>
+    <string name="status_server_url_scheme_required">Server-URL muss mit https:// beginnen.</string>
     <string name="status_server_url_host_required">Server-URL enthält keinen Host.</string>
     <string name="status_server_url_credentials_forbidden">Server-URL darf keine Zugangsdaten enthalten.</string>
     <string name="status_server_url_query_forbidden">Server-URL darf keine Query-Parameter oder Fragmente enthalten.</string>
-    <string name="status_server_url_public_http_forbidden">HTTP ist nur für lokale oder private Server erlaubt. Für öffentliche Server bitte HTTPS verwenden.</string>
+    <string name="status_server_url_public_http_forbidden">HTTP ist nicht erlaubt. Bitte HTTPS verwenden.</string>
     <string name="account_error_bad_request">Diese Kontoanfrage wird nicht unterstützt.</string>
     <string name="media_root_recent">Zuletzt gehört</string>
     <string name="media_root_books">Hörbücher</string>

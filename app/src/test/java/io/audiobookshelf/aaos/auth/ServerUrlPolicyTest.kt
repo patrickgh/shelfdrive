@@ -15,31 +15,31 @@ class ServerUrlPolicyTest {
     }
 
     @Test
-    fun `allows cleartext on private lan addresses`() {
+    fun `rejects cleartext on private lan addresses`() {
         val result = ServerUrlPolicy.validate("http://192.168.1.10:13378/")
 
-        assertEquals("http://192.168.1.10:13378", result.normalizedUrl)
-        assertNull(result.errorMessage)
+        assertNull(result.normalizedUrl)
+        assertNotNull(result.errorMessage)
     }
 
     @Test
-    fun `allows cleartext on emulator host address`() {
+    fun `rejects cleartext on emulator host address`() {
         val result = ServerUrlPolicy.validate("http://10.0.2.2:13378/")
 
-        assertEquals("http://10.0.2.2:13378", result.normalizedUrl)
-        assertNull(result.errorMessage)
+        assertNull(result.normalizedUrl)
+        assertNotNull(result.errorMessage)
     }
 
     @Test
-    fun `allows cleartext on local hostnames`() {
+    fun `rejects cleartext on local hostnames`() {
         val result = ServerUrlPolicy.validate("http://audiobookshelf.local:13378")
 
-        assertEquals("http://audiobookshelf.local:13378", result.normalizedUrl)
-        assertNull(result.errorMessage)
+        assertNull(result.normalizedUrl)
+        assertNotNull(result.errorMessage)
     }
 
     @Test
-    fun `rejects public cleartext urls`() {
+    fun `rejects cleartext urls`() {
         val result = ServerUrlPolicy.validate("http://abs.example.com")
 
         assertNull(result.normalizedUrl)
