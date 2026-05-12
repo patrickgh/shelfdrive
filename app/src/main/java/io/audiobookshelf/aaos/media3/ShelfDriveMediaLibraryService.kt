@@ -35,6 +35,7 @@ import io.audiobookshelf.aaos.account.AudiobookshelfAccountRegistry
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthRepository
 import io.audiobookshelf.aaos.auth.AuthSnapshot
+import io.audiobookshelf.aaos.auth.AuthStatus
 import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
@@ -176,24 +177,36 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         publishStoredPlaybackPlaceholder()
 
         serviceScope.launch {
-            val initialAuth = authRepository.bootstrap()
-            updateAuthSnapshot(initialAuth)
-            updateSyncSnapshot(syncRepository.loadSnapshot())
-            diagnosticEventLogger.record("auth_bootstrap", mapOf("status" to initialAuth.status.name))
-            if (initialAuth.isAuthenticated) {
-                restoreStoredPlaybackWithTimeout()
-                val snapshot = syncRepository.syncIfStale()
-                updateSyncSnapshot(snapshot)
-                diagnosticEventLogger.record(
-                    "startup_sync_finished",
-                    mapOf(
-                        "status" to snapshot.status.name,
-                        "books" to snapshot.bookCount.toString(),
-                    ),
-                )
-                if (snapshot.status != SyncStatus.FAILED) {
-                    progressSyncRepository.refreshInProgress()
+            runCatching {
+                val initialAuth = authRepository.bootstrap()
+                updateAuthSnapshot(initialAuth)
+                updateSyncSnapshot(syncRepository.loadSnapshot())
+                diagnosticEventLogger.record("auth_bootstrap", mapOf("status" to initialAuth.status.name))
+                if (initialAuth.isAuthenticated) {
+                    restoreStoredPlaybackWithTimeout()
+                    val snapshot = syncRepository.syncIfStale()
+                    updateSyncSnapshot(snapshot)
+                    diagnosticEventLogger.record(
+                        "startup_sync_finished",
+                        mapOf(
+                            "status" to snapshot.status.name,
+                            "books" to snapshot.bookCount.toString(),
+                        ),
+                    )
+                    if (snapshot.status != SyncStatus.FAILED) {
+                        progressSyncRepository.refreshInProgress()
+                    }
                 }
+            }.onFailure { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                diagnosticEventLogger.record(
+                    "startup_bootstrap_failed",
+                    exceptionDiagnostics(exception),
+                )
+                Log.w(TAG, "Startup bootstrap failed. Keeping MediaLibrarySession available.", exception)
+                updateAuthSnapshot(AuthSnapshot(status = AuthStatus.LOGGED_OUT))
             }
         }
     }
@@ -508,11 +521,22 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
             return serviceFuture("playbackResumption") {
                 val stored = playbackStateStorage.load()
-                    ?: throw PlaybackResolutionException("No stored playback state for resumption.")
+                    ?: return@serviceFuture emptyPlaybackResumption(
+                        reason = "no_stored_state",
+                        controller = controller,
+                        isForPlayback = isForPlayback,
+                        allowCurrentPlayerFallback = true,
+                    )
                 if (!PlaybackSnapshotPolicy.isRestorable(stored, System.currentTimeMillis())) {
                     playbackStateStorage.clear()
-                    diagnosticEventLogger.record("playback_resumption_skipped", mapOf("reason" to "stored_state_too_old"))
-                    throw PlaybackResolutionException("Stored playback state is too old.")
+                    placeholderPlaybackState = null
+                    return@serviceFuture emptyPlaybackResumption(
+                        reason = "stored_state_too_old",
+                        controller = controller,
+                        isForPlayback = isForPlayback,
+                        bookId = stored.bookId,
+                        allowCurrentPlayerFallback = false,
+                    )
                 }
 
                 diagnosticEventLogger.record(
@@ -693,6 +717,64 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             Log.w(TAG, "Could not resolve playback resumption for book=${stored.bookId}.", exception)
             null
         }
+    }
+
+    private fun emptyPlaybackResumption(
+        reason: String,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+        bookId: String? = null,
+        allowCurrentPlayerFallback: Boolean,
+    ): MediaSession.MediaItemsWithStartPosition {
+        val currentItems = if (allowCurrentPlayerFallback) {
+            (0 until player.mediaItemCount).map { index -> player.getMediaItemAt(index) }
+        } else {
+            emptyList()
+        }
+        if (currentItems.isNotEmpty()) {
+            val startIndex = player.currentMediaItemIndex
+                .takeIf { it in currentItems.indices }
+                ?: 0
+            val startPositionMs = player.currentPosition.coerceAtLeast(0L)
+            diagnosticEventLogger.record(
+                "playback_resumption_current_returned",
+                buildMap {
+                    put("reason", reason)
+                    put("controllerPackage", controller.packageName)
+                    put("controllerUid", controller.uid.toString())
+                    put("isForPlayback", isForPlayback.toString())
+                    put("items", currentItems.size.toString())
+                    put("startIndex", startIndex.toString())
+                    put("startPositionMs", startPositionMs.toString())
+                    if (!bookId.isNullOrBlank()) {
+                        put("bookId", bookId)
+                    }
+                },
+            )
+            return MediaSession.MediaItemsWithStartPosition(
+                currentItems,
+                startIndex,
+                startPositionMs,
+            )
+        }
+
+        diagnosticEventLogger.record(
+            "playback_resumption_empty",
+            buildMap {
+                put("reason", reason)
+                put("controllerPackage", controller.packageName)
+                put("controllerUid", controller.uid.toString())
+                put("isForPlayback", isForPlayback.toString())
+                if (!bookId.isNullOrBlank()) {
+                    put("bookId", bookId)
+                }
+            },
+        )
+        return MediaSession.MediaItemsWithStartPosition(
+            emptyList(),
+            C.INDEX_UNSET,
+            C.TIME_UNSET,
+        )
     }
 
     private fun restoreOptimisticPlayback(
@@ -1561,13 +1643,37 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     completer.set(block())
                 } catch (exception: IOException) {
                     Log.w(TAG, "Media3 callback failed: $label", exception)
+                    diagnosticEventLogger.record(
+                        "media3_callback_failed",
+                        exceptionDiagnostics(exception, "label" to label),
+                    )
                     completer.setException(exception)
                 } catch (throwable: Throwable) {
                     Log.e(TAG, "Media3 callback crashed: $label", throwable)
+                    diagnosticEventLogger.record(
+                        "media3_callback_crashed",
+                        exceptionDiagnostics(throwable, "label" to label),
+                    )
                     completer.setException(throwable)
                 }
             }
             label
+        }
+    }
+
+    private fun exceptionDiagnostics(
+        throwable: Throwable,
+        vararg details: Pair<String, String?>,
+    ): Map<String, String?> {
+        return buildMap {
+            details.forEach { (key, value) -> put(key, value) }
+            put("category", throwable.restoreFailureCategory())
+            put("exception", throwable::class.java.simpleName)
+            put("message", throwable.message)
+            throwable.cause?.let { cause ->
+                put("causeException", cause::class.java.simpleName)
+                put("causeMessage", cause.message)
+            }
         }
     }
 
