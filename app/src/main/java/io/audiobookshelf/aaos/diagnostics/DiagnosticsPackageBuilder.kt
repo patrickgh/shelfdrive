@@ -253,8 +253,6 @@ class DiagnosticsPackageBuilder(
         private const val EXTRA_LEGACY_MEDIA_ID = "com.android.car.media.intent.extra.MEDIA_ID"
         private const val ROOT_MEDIA_ID = "root"
         private val DIAGNOSTIC_PACKAGES = listOf(
-            "com.android.vending",
-            "com.google.android.gms",
             "com.android.car.media",
             "com.google.android.apps.automotive.templates.host",
         )

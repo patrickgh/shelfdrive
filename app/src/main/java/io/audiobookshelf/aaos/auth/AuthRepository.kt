@@ -4,7 +4,6 @@ import android.util.Log
 import io.audiobookshelf.aaos.absapi.ApiException
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.AuthenticatedSession
-import io.audiobookshelf.aaos.account.AudiobookshelfAccountRegistry
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,7 +11,6 @@ import java.io.IOException
 
 class AuthRepository(
     private val storage: AuthStorage,
-    private val accountRegistry: AudiobookshelfAccountRegistry? = null,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
 ) {
 
@@ -34,12 +32,6 @@ class AuthRepository(
                 val authorization = apiClient.authorize(baseUrl, accessToken, username)
                 if (authorization.isAuthorized) {
                     val session = authorization.session
-                    accountRegistry?.upsert(
-                        username = session?.username ?: username,
-                        baseUrl = baseUrl,
-                        accessToken = accessToken,
-                        serverVersion = session?.serverVersion,
-                    )
                     return@withContext buildAuthenticatedSnapshot(
                         baseUrl = baseUrl,
                         username = session?.username ?: username,
@@ -52,12 +44,6 @@ class AuthRepository(
                     return@withContext refreshOrReauthenticate(stored, baseUrl, username)
                 }
                 Log.w(TAG, "Token validation failed with API error ${exception.statusCode}. Keeping cached session alive.", exception)
-                accountRegistry?.upsert(
-                    username = username,
-                    baseUrl = baseUrl,
-                    accessToken = accessToken,
-                    serverVersion = null,
-                )
                 return@withContext AuthSnapshot(
                     status = AuthStatus.AUTHENTICATED,
                     baseUrl = baseUrl,
@@ -67,12 +53,6 @@ class AuthRepository(
                 )
             } catch (exception: IOException) {
                 Log.w(TAG, "Token validation failed due to IO error. Keeping cached session alive.", exception)
-                accountRegistry?.upsert(
-                    username = username,
-                    baseUrl = baseUrl,
-                    accessToken = accessToken,
-                    serverVersion = null,
-                )
                 return@withContext AuthSnapshot(
                     status = AuthStatus.AUTHENTICATED,
                     baseUrl = baseUrl,
@@ -150,12 +130,6 @@ class AuthRepository(
                     refreshToken = session.refreshToken ?: stored.refreshToken,
                 ),
             )
-            accountRegistry?.upsert(
-                username = session.username,
-                baseUrl = baseUrl,
-                accessToken = accessToken,
-                serverVersion = session.serverVersion,
-            )
 
             buildAuthenticatedSnapshot(
                 baseUrl = baseUrl,
@@ -186,7 +160,6 @@ class AuthRepository(
 
     suspend fun logout(): AuthSnapshot = withContext(Dispatchers.IO) {
         storage.clear()
-        accountRegistry?.clear()
         AuthSnapshot(status = AuthStatus.LOGGED_OUT)
     }
 
@@ -246,12 +219,6 @@ class AuthRepository(
                         refreshToken = session.refreshToken ?: refreshToken,
                     ),
                 )
-                accountRegistry?.upsert(
-                    username = session.username,
-                    baseUrl = baseUrl,
-                    accessToken = accessToken,
-                    serverVersion = session.serverVersion,
-                )
                 return buildAuthenticatedSnapshot(
                     baseUrl = baseUrl,
                     username = session.username,
@@ -263,12 +230,6 @@ class AuthRepository(
                     return silentReauthenticate(stored, baseUrl, username)
                 }
                 Log.w(TAG, "Token refresh failed with API error ${exception.statusCode}.", exception)
-                accountRegistry?.upsert(
-                    username = username,
-                    baseUrl = baseUrl,
-                    accessToken = stored.accessToken,
-                    serverVersion = null,
-                )
                 return AuthSnapshot(
                     status = AuthStatus.AUTHENTICATED,
                     baseUrl = baseUrl,
@@ -278,12 +239,6 @@ class AuthRepository(
                 )
             } catch (exception: IOException) {
                 Log.w(TAG, "Token refresh failed due to IO error. Keeping cached session alive.", exception)
-                accountRegistry?.upsert(
-                    username = username,
-                    baseUrl = baseUrl,
-                    accessToken = stored.accessToken,
-                    serverVersion = null,
-                )
                 return AuthSnapshot(
                     status = AuthStatus.AUTHENTICATED,
                     baseUrl = baseUrl,
@@ -369,12 +324,6 @@ class AuthRepository(
                     refreshToken = session.refreshToken ?: stored.refreshToken,
                 ),
             )
-            accountRegistry?.upsert(
-                username = session.username,
-                baseUrl = baseUrl,
-                accessToken = accessToken,
-                serverVersion = session.serverVersion,
-            )
             buildAuthenticatedSnapshot(
                 baseUrl = baseUrl,
                 username = session.username,
@@ -399,12 +348,6 @@ class AuthRepository(
                 )
             }
             Log.w(TAG, "Silent re-authentication failed with API error ${exception.statusCode}. Keeping cached session alive.", exception)
-            accountRegistry?.upsert(
-                username = username,
-                baseUrl = baseUrl,
-                accessToken = stored.accessToken,
-                serverVersion = null,
-            )
             AuthSnapshot(
                 status = AuthStatus.AUTHENTICATED,
                 baseUrl = baseUrl,
@@ -414,12 +357,6 @@ class AuthRepository(
             )
         } catch (exception: IOException) {
             Log.w(TAG, "Silent re-authentication failed due to IO error. Keeping cached session alive.", exception)
-            accountRegistry?.upsert(
-                username = username,
-                baseUrl = baseUrl,
-                accessToken = stored.accessToken,
-                serverVersion = null,
-            )
             AuthSnapshot(
                 status = AuthStatus.AUTHENTICATED,
                 baseUrl = baseUrl,

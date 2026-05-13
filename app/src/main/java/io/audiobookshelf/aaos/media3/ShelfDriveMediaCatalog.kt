@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
-import androidx.media.utils.MediaConstants
+import androidx.media3.session.MediaConstants
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
@@ -35,8 +35,8 @@ internal class ShelfDriveMediaCatalog(
             title = context.getString(R.string.app_name),
             iconUri = drawableUri(R.drawable.ic_app_icon),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             ),
         )
     }
@@ -106,24 +106,13 @@ internal class ShelfDriveMediaCatalog(
 
     fun rootParams(params: LibraryParams?): LibraryParams {
         val extras = Bundle(params?.extras ?: Bundle.EMPTY).apply {
-            putBoolean(CONTENT_STYLE_SUPPORTED, true)
-            putBoolean(MEDIA_SEARCH_SUPPORTED, true)
-            putBoolean(MediaConstants.BROWSER_SERVICE_EXTRAS_KEY_SEARCH_SUPPORTED, true)
             putInt(
-                CONTENT_STYLE_BROWSABLE_HINT,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             )
             putInt(
-                MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-            putInt(
-                CONTENT_STYLE_PLAYABLE_HINT,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-            putInt(
-                MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
             )
         }
         return LibraryParams.Builder()
@@ -198,7 +187,7 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
@@ -232,7 +221,7 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
@@ -268,7 +257,7 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
@@ -281,8 +270,8 @@ internal class ShelfDriveMediaCatalog(
             title = context.getString(R.string.media_root_recent),
             iconUri = drawableUri(R.drawable.ic_menu_recent),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
@@ -293,8 +282,8 @@ internal class ShelfDriveMediaCatalog(
             title = context.getString(R.string.media_root_books),
             iconUri = drawableUri(R.drawable.ic_menu_books),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
@@ -305,8 +294,8 @@ internal class ShelfDriveMediaCatalog(
             title = context.getString(R.string.media_root_authors),
             iconUri = drawableUri(R.drawable.ic_menu_authors),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
@@ -373,8 +362,8 @@ internal class ShelfDriveMediaCatalog(
             ),
             iconUri = ArtworkUriFactory.authorImage(author.id, ArtworkUriFactory.signatureFor(author.imagePath)),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
@@ -416,10 +405,10 @@ internal class ShelfDriveMediaCatalog(
     ): Bundle {
         return Bundle().apply {
             browsableStyle?.let {
-                putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it)
+                putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it)
             }
             playableStyle?.let {
-                putInt(MediaConstants.DESCRIPTION_EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it)
+                putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it)
             }
         }
     }
@@ -433,10 +422,4 @@ internal class ShelfDriveMediaCatalog(
             .build()
     }
 
-    private companion object {
-        private const val CONTENT_STYLE_SUPPORTED = "android.media.browse.CONTENT_STYLE_SUPPORTED"
-        private const val CONTENT_STYLE_BROWSABLE_HINT = "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT"
-        private const val CONTENT_STYLE_PLAYABLE_HINT = "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT"
-        private const val MEDIA_SEARCH_SUPPORTED = "android.media.browse.SEARCH_SUPPORTED"
-    }
 }
