@@ -8,16 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <queries>
-        <package android:name="com.android.car.media" />
-        <package android:name="com.google.android.apps.automotive.templates.host" />
         <package android:name="com.android.documentsui" />
         <package android:name="com.google.android.documentsui" />
-        <intent>
-            <action android:name="android.car.intent.action.MEDIA_TEMPLATE" />
-        </intent>
-        <intent>
-            <action android:name="androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2" />
-        </intent>
     </queries>
 
     <application
@@ -31,6 +23,7 @@
         android:roundIcon="@drawable/ic_app_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.AbsAaos"
+        tools:remove="android:appComponentFactory"
         tools:targetApi="tiramisu">
 
         <meta-data
@@ -63,14 +56,6 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
-
-        <receiver
-            android:name="androidx.media3.session.MediaButtonReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.MEDIA_BUTTON" />
-            </intent-filter>
-        </receiver>
 
         <provider
             android:name=".artwork.ArtworkContentProvider"
