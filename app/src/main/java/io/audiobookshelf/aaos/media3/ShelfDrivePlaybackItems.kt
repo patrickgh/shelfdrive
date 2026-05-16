@@ -10,27 +10,8 @@ import io.audiobookshelf.aaos.playback.QueueStartPosition
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlayback
 
 @OptIn(UnstableApi::class)
-internal fun ResolvedAudiobookPlayback.toMedia3PlaybackWindow(
-    startPosition: QueueStartPosition,
-    windowSize: Int,
-): PlaybackMediaWindow {
-    val windowRange = playbackWindowRange(
-        queueSize = queue.size,
-        startTrackIndex = startPosition.trackIndex,
-        windowSize = windowSize,
-    )
-    if (windowRange.isEmpty()) {
-        return PlaybackMediaWindow(
-            items = emptyList(),
-            startIndex = 0,
-            startPositionMs = 0L,
-            globalStartIndex = 0,
-        )
-    }
-    val windowStart = windowRange.first
-    val items = queue
-        .slice(windowRange)
-        .map { track ->
+internal fun ResolvedAudiobookPlayback.toMedia3PlaybackItems(): List<MediaItem> {
+    return queue.map { track ->
             MediaItem.Builder()
                 .setMediaId("${BrowseNodeId.Book(bookId).serialize()}:${track.id}")
                 .setUri(track.contentUrl)
@@ -49,31 +30,5 @@ internal fun ResolvedAudiobookPlayback.toMedia3PlaybackWindow(
                         .build(),
                 )
                 .build()
-        }
-    return PlaybackMediaWindow(
-        items = items,
-        startIndex = 0,
-        startPositionMs = startPosition.positionMs,
-        globalStartIndex = windowStart,
-    )
-}
-
-internal fun playbackWindowRange(
-    queueSize: Int,
-    startTrackIndex: Int,
-    windowSize: Int,
-): IntRange {
-    if (queueSize <= 0) {
-        return IntRange.EMPTY
     }
-    val windowStart = startTrackIndex.coerceIn(0, queueSize - 1)
-    val windowEndExclusive = (windowStart + windowSize.coerceAtLeast(1)).coerceAtMost(queueSize)
-    return windowStart until windowEndExclusive
 }
-
-internal data class PlaybackMediaWindow(
-    val items: List<MediaItem>,
-    val startIndex: Int,
-    val startPositionMs: Long,
-    val globalStartIndex: Int,
-)
