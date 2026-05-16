@@ -10,6 +10,8 @@
     <queries>
         <package android:name="com.android.car.media" />
         <package android:name="com.google.android.apps.automotive.templates.host" />
+        <package android:name="com.android.documentsui" />
+        <package android:name="com.google.android.documentsui" />
         <intent>
             <action android:name="android.car.intent.action.MEDIA_TEMPLATE" />
         </intent>

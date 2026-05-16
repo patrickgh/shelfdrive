@@ -76,7 +76,7 @@ internal class ShelfDriveMediaCatalog(
 
     suspend fun loadSearchResults(query: String): List<MediaItem> {
         if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
+            return emptyList()
         }
 
         val searchQuery = query.trim()
@@ -133,7 +133,7 @@ internal class ShelfDriveMediaCatalog(
 
     private suspend fun loadRecentItems(): List<MediaItem> {
         if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
+            return emptyList()
         }
         val recentBooks = browseRepository.getRecentBooks()
         if (recentBooks.isNotEmpty()) {
@@ -162,7 +162,7 @@ internal class ShelfDriveMediaCatalog(
 
     private suspend fun loadBooksItems(): List<MediaItem> {
         if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
+            return emptyList()
         }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
             return listOf(buildConnectionProblemItem("books:sync_failed"))
@@ -196,7 +196,7 @@ internal class ShelfDriveMediaCatalog(
 
     private suspend fun loadAuthorsItems(): List<MediaItem> {
         if (!authSnapshot.isAuthenticated) {
-            return listOf(buildAuthStateItem())
+            return emptyList()
         }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.authorCount == 0) {
             return listOf(buildConnectionProblemItem("authors:sync_failed"))
@@ -298,29 +298,6 @@ internal class ShelfDriveMediaCatalog(
                 playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
-    }
-
-    private fun buildAuthStateItem(): MediaItem {
-        val state = when (authSnapshot.status) {
-            AuthStatus.SESSION_EXPIRED -> Triple(
-                "auth:expired",
-                context.getString(R.string.media_session_expired_title),
-                context.getString(R.string.media_session_expired_summary),
-            )
-
-            AuthStatus.LOGIN_FAILED -> Triple(
-                "auth:login_failed",
-                context.getString(R.string.media_login_failed_title),
-                context.getString(R.string.media_settings_hint),
-            )
-
-            else -> Triple(
-                "auth:required",
-                context.getString(R.string.media_auth_required_title),
-                context.getString(R.string.media_auth_required_summary),
-            )
-        }
-        return buildStateItem(state.first, state.second, state.third, drawableUri(R.drawable.ic_menu_lock))
     }
 
     private fun buildConnectionProblemItem(mediaId: String): MediaItem {

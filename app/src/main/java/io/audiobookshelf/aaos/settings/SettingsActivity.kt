@@ -205,6 +205,32 @@ class SettingsActivity : AppCompatActivity() {
         }
     }
 
+    internal fun launchFilesApp(): FilesAppLaunchResult {
+        val result = FilesAppLauncher(this).launch()
+        when (result) {
+            is FilesAppLaunchResult.Launched -> {
+                diagnosticEventLogger.record(
+                    "files_app_launch_success",
+                    mapOf(
+                        "packageName" to result.candidate.packageName,
+                        "activityClassName" to result.candidate.activityClassName,
+                        "warningCount" to result.warnings.size.toString(),
+                    ),
+                )
+            }
+            is FilesAppLaunchResult.Failed -> {
+                diagnosticEventLogger.record(
+                    "files_app_launch_failed",
+                    mapOf(
+                        "candidateCount" to result.candidates.size.toString(),
+                        "errors" to result.errors.joinToString("\n"),
+                    ),
+                )
+            }
+        }
+        return result
+    }
+
     internal fun currentAuthSnapshot(): AuthSnapshot = currentAuthSnapshot
 
     internal fun currentSyncSnapshot(): SyncSnapshot = currentSyncSnapshot
