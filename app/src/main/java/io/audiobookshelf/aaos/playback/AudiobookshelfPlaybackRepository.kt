@@ -87,7 +87,7 @@ class AudiobookshelfPlaybackRepository(
                 bookId,
                 ArtworkUriFactory.signatureFor(playbackSession.coverPath ?: catalogBook?.coverPath),
             ),
-            durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations(),
+            durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations() ?: catalogBook?.durationMs?.takeIf { it > 0L },
             queue = queue,
             startIndex = startPosition.trackIndex,
             startPositionMs = startPosition.positionMs,

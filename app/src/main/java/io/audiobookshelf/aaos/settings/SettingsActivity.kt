@@ -6,7 +6,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.bundleOf
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
@@ -119,13 +118,14 @@ class SettingsActivity : AppCompatActivity() {
         loginInProgress = true
         pendingAutoSyncAfterLogin = true
         renderState()
+        val args = Bundle().apply {
+            putString(AuthCommands.EXTRA_SERVER_URL, serverUrl)
+            putString(AuthCommands.EXTRA_USERNAME, username)
+            putString(AuthCommands.EXTRA_PASSWORD, password)
+        }
         sendCommand(
             AuthCommands.CMD_LOGIN,
-            bundleOf(
-                AuthCommands.EXTRA_SERVER_URL to serverUrl,
-                AuthCommands.EXTRA_USERNAME to username,
-                AuthCommands.EXTRA_PASSWORD to password,
-            ),
+            args,
             ::handleAuthResult,
         )
     }
@@ -203,32 +203,6 @@ class SettingsActivity : AppCompatActivity() {
             currentDiagnosticsUploadSnapshot = storage.load()
             renderState()
         }
-    }
-
-    internal fun launchFilesApp(): FilesAppLaunchResult {
-        val result = FilesAppLauncher(this).launch()
-        when (result) {
-            is FilesAppLaunchResult.Launched -> {
-                diagnosticEventLogger.record(
-                    "files_app_launch_success",
-                    mapOf(
-                        "packageName" to result.candidate.packageName,
-                        "activityClassName" to result.candidate.activityClassName,
-                        "warningCount" to result.warnings.size.toString(),
-                    ),
-                )
-            }
-            is FilesAppLaunchResult.Failed -> {
-                diagnosticEventLogger.record(
-                    "files_app_launch_failed",
-                    mapOf(
-                        "candidateCount" to result.candidates.size.toString(),
-                        "errors" to result.errors.joinToString("\n"),
-                    ),
-                )
-            }
-        }
-        return result
     }
 
     internal fun currentAuthSnapshot(): AuthSnapshot = currentAuthSnapshot

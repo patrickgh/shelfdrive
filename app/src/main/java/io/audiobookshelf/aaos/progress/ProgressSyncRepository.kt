@@ -97,18 +97,15 @@ class ProgressSyncRepository(
         pendingUpload: Boolean,
     ): MediaProgressEntity? {
         val existing = database.mediaProgressDao().getByBookId(snapshot.bookId)
-        val durationMs = snapshot.durationMs ?: existing?.durationMs
-        val progressFraction = if (durationMs != null && durationMs > 0L) {
-            snapshot.currentTimeMs.toDouble() / durationMs.toDouble()
-        } else {
-            null
-        }?.coerceIn(0.0, 1.0)
-
-        val now = System.currentTimeMillis()
-        if (!database.bookDao().existsById(snapshot.bookId)) {
+        val catalogBook = database.bookDao().getPlayableById(snapshot.bookId)
+        if (catalogBook == null) {
             Log.w(TAG, "Skipping local progress cache for unknown book ${snapshot.bookId}")
             return null
         }
+        val durationMs = snapshot.durationMs ?: existing?.durationMs ?: catalogBook.durationMs?.takeIf { it > 0L }
+        val progressFraction = calculateProgressFraction(snapshot.currentTimeMs, durationMs)
+
+        val now = System.currentTimeMillis()
         val entity = MediaProgressEntity(
             bookId = snapshot.bookId,
             currentTimeMs = snapshot.currentTimeMs,
@@ -193,4 +190,12 @@ class ProgressSyncRepository(
     companion object {
         private const val TAG = "ProgressSyncRepo"
     }
+}
+
+internal fun calculateProgressFraction(currentTimeMs: Long, durationMs: Long?): Double? {
+    return if (durationMs != null && durationMs > 0L) {
+        currentTimeMs.toDouble() / durationMs.toDouble()
+    } else {
+        null
+    }?.coerceIn(0.0, 1.0)
 }

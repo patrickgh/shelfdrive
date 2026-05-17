@@ -28,6 +28,7 @@ internal class ShelfDriveMediaCatalog(
 ) {
     var authSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
     var syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
+    var hasStoredLoginCredentials: Boolean = false
 
     fun buildRootItem(): MediaItem {
         return buildBrowsableItem(
@@ -75,7 +76,7 @@ internal class ShelfDriveMediaCatalog(
     }
 
     suspend fun loadSearchResults(query: String): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
+        if (!hasStoredLoginCredentials) {
             return emptyList()
         }
 
@@ -132,14 +133,14 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadRecentItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
+        if (!hasStoredLoginCredentials) {
             return emptyList()
         }
         val recentBooks = browseRepository.getRecentBooks()
         if (recentBooks.isNotEmpty()) {
             return recentBooks.map(::buildPlayableBookItem)
         }
-        if (authSnapshot.isAuthenticated && syncSnapshot.status == SyncStatus.RUNNING && syncSnapshot.bookCount == 0) {
+        if (hasStoredLoginCredentials && syncSnapshot.status == SyncStatus.RUNNING && syncSnapshot.bookCount == 0) {
             return listOf(
                 buildStateItem(
                     mediaId = "recent:sync_running",
@@ -148,7 +149,7 @@ internal class ShelfDriveMediaCatalog(
                 ),
             )
         }
-        if (authSnapshot.isAuthenticated && syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
+        if (hasStoredLoginCredentials && syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
             return listOf(buildConnectionProblemItem("recent:sync_failed"))
         }
         return listOf(
@@ -161,7 +162,7 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadBooksItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
+        if (!hasStoredLoginCredentials) {
             return emptyList()
         }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
@@ -195,7 +196,7 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadAuthorsItems(): List<MediaItem> {
-        if (!authSnapshot.isAuthenticated) {
+        if (!hasStoredLoginCredentials) {
             return emptyList()
         }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.authorCount == 0) {

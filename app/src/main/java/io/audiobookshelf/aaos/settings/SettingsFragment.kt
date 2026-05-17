@@ -288,12 +288,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             showDiagnosticsUploadDisclosure()
             true
         }
-
-        findPreference<Preference>(KEY_LAUNCH_FILES_ACTION)?.setOnPreferenceClickListener {
-            resetDiagnosticsUnlockClicks()
-            launchFilesApp()
-            true
-        }
     }
 
     private fun renderFieldState() {
@@ -495,35 +489,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             .show()
     }
 
-    private fun launchFilesApp() {
-        when (val result = (activity as? SettingsActivity)?.launchFilesApp()) {
-            is FilesAppLaunchResult.Failed -> showFilesLaunchFailure(result)
-            is FilesAppLaunchResult.Launched,
-            null -> Unit
-        }
-    }
-
-    private fun showFilesLaunchFailure(result: FilesAppLaunchResult.Failed) {
-        val attempts = result.candidates.joinToString("\n") { candidate ->
-            getString(
-                R.string.settings_launch_files_attempt,
-                candidate.packageName,
-                candidate.activityClassName,
-            )
-        }
-        val details = result.errors.takeIf { it.isNotEmpty() }?.joinToString("\n").orEmpty()
-        val message = if (details.isBlank()) {
-            getString(R.string.settings_launch_files_failed_message, attempts)
-        } else {
-            getString(R.string.settings_launch_files_failed_message_with_errors, attempts, details)
-        }
-        AlertDialog.Builder(requireContext())
-            .setTitle(R.string.settings_launch_files_failed_title)
-            .setMessage(message)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-    }
-
     private fun localizeStatusMessage(message: String): String {
         Regex("""Serverversion '(.+)' konnte nicht sauber ausgewertet werden\.""")
             .matchEntire(message)
@@ -687,7 +652,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_STARTUP_DIAGNOSTICS = "startup_diagnostics"
         private const val KEY_DIAGNOSTICS_UPLOAD_URL = "diagnostics_upload_url"
         private const val KEY_DIAGNOSTICS_UPLOAD_ACTION = "diagnostics_upload_action"
-        private const val KEY_LAUNCH_FILES_ACTION = "launch_files_action"
         private const val KEY_APP_VERSION = "app_version"
         private const val KEY_HOMEPAGE = "homepage"
         private const val KEY_PRIVACY_POLICY = "privacy_policy"

@@ -5,7 +5,6 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
 import io.audiobookshelf.aaos.browser.BrowseNodeId
-import io.audiobookshelf.aaos.cache.PlaybackAudioCache
 import io.audiobookshelf.aaos.playback.QueueStartPosition
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlayback
 
@@ -16,7 +15,6 @@ internal fun ResolvedAudiobookPlayback.toMedia3PlaybackItems(): List<MediaItem> 
                 .setMediaId("${BrowseNodeId.Book(bookId).serialize()}:${track.id}")
                 .setUri(track.contentUrl)
                 .setMimeType(track.mimeType)
-                .setCustomCacheKey(PlaybackAudioCache.stableCacheKey(bookId, track.id))
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(title)

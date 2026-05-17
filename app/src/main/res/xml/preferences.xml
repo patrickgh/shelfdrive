@@ -107,11 +107,6 @@
             android:key="diagnostics_upload_action"
             android:title="@string/settings_diagnostics_upload_title"
             android:summary="@string/settings_diagnostics_upload_summary" />
-
-        <Preference
-            android:key="launch_files_action"
-            android:title="@string/settings_launch_files_title"
-            android:summary="@string/settings_launch_files_summary" />
     </PreferenceCategory>
 
 </PreferenceScreen>

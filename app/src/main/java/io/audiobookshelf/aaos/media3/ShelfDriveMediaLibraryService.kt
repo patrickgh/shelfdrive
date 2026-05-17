@@ -8,12 +8,12 @@ import androidx.annotation.OptIn
 import androidx.concurrent.futures.CallbackToFutureAdapter
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
@@ -41,7 +41,6 @@ import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.cache.CacheCommands
 import io.audiobookshelf.aaos.cache.CacheRepository
-import io.audiobookshelf.aaos.cache.PlaybackAudioCache
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
@@ -99,10 +98,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
     private var activeBook: ResolvedAudiobookPlayback? = null
-    private var activeAccessToken: String? = null
     private var periodicProgressJob: Job? = null
     private var playbackRecoveryJob: Job? = null
-    private var playbackPreCacheJob: Job? = null
     private var transientPlaybackRetryAttempt: Int = 0
     private var wasPlayWhenReady: Boolean = false
 
@@ -118,6 +115,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         val database = CatalogDatabase.getInstance(this)
         browseRepository = CatalogBrowseRepository(database)
         mediaCatalog = ShelfDriveMediaCatalog(this, browseRepository)
+        mediaCatalog.hasStoredLoginCredentials = hasStoredLoginCredentials()
         sessionPolicy = ShelfDriveSessionPolicy(this)
         syncRepository = CatalogSyncRepository(
             database = database,
@@ -142,10 +140,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
-                    PlaybackAudioCache.createDataSourceFactory(
-                        this,
-                        DefaultDataSource.Factory(this, httpDataSourceFactory),
-                    ),
+                    DefaultDataSource.Factory(this, httpDataSourceFactory),
                 ),
             )
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
@@ -165,9 +160,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         player.setPlaybackParameters(
             PlaybackParameters(PlaybackPreferences.playbackSpeed(this), player.playbackParameters.pitch),
         )
-        sessionPlayer = player
+        sessionPlayer = AudiobookProgressPlayer(player)
 
         mediaLibrarySession = MediaLibrarySession.Builder(this, sessionPlayer, LibraryCallback())
+            .setCustomLayout(sessionPolicy.customLayout(player.playbackParameters.speed))
+            .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed))
             .build()
 
         serviceScope.launch {
@@ -176,8 +173,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 updateAuthSnapshot(initialAuth)
                 updateSyncSnapshot(syncRepository.loadSnapshot())
                 diagnosticEventLogger.record("auth_bootstrap", mapOf("status" to initialAuth.status.name))
-                if (initialAuth.isAuthenticated) {
+                if (initialAuth.isAuthenticated || hasStoredLoginCredentials()) {
                     restoreStoredPlaybackWithTimeout()
+                }
+                if (initialAuth.isAuthenticated) {
                     val snapshot = syncRepository.syncIfStale()
                     updateSyncSnapshot(snapshot)
                     diagnosticEventLogger.record(
@@ -251,7 +250,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
         periodicProgressJob?.cancel()
         playbackRecoveryJob?.cancel()
-        playbackPreCacheJob?.cancel()
         mediaLibrarySession.release()
         player.removeListener(this)
         player.release()
@@ -293,7 +291,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (playbackState == Player.STATE_READY) {
             transientPlaybackRetryAttempt = 0
             saveActivePlaybackState()
-            warmPlaybackCache("player_ready")
         }
     }
 
@@ -305,7 +302,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         traceMethod("onPositionDiscontinuity", mapOf("reason" to reason.toString()))
         if (reason == Player.DISCONTINUITY_REASON_SEEK) {
             emitProgress(PlaybackProgressReason.SEEKED)
-            warmPlaybackCache("seek")
         }
     }
 
@@ -319,7 +315,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         )
         if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
             emitProgress(PlaybackProgressReason.TRACK_CHANGED)
-            warmPlaybackCache("track_changed")
         }
     }
 
@@ -383,6 +378,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
                 .setAvailableSessionCommands(sessionPolicy.availableSessionCommands(controller))
                 .setAvailablePlayerCommands(sessionPolicy.availablePlayerCommands())
+                .setCustomLayout(sessionPolicy.customLayout(player.playbackParameters.speed))
+                .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed))
                 .build()
         }
 
@@ -447,7 +444,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     "mediaId" to mediaId,
                 ),
             )
-            if (!mediaCatalog.authSnapshot.isAuthenticated && mediaId.requiresAuthentication()) {
+            if (!hasStoredLoginCredentials() && mediaId.requiresAuthentication()) {
                 return Futures.immediateFuture(authRequiredItemResult(browser, mediaId, null))
             }
             return serviceFuture("getItem:$mediaId") {
@@ -478,7 +475,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 ),
             )
             val effectiveParentId = parentId.normalizedBrowseParentId()
-            if (!mediaCatalog.authSnapshot.isAuthenticated && effectiveParentId != BrowseNodeId.Root.serialize()) {
+            if (!hasStoredLoginCredentials() && effectiveParentId != BrowseNodeId.Root.serialize()) {
                 return Futures.immediateFuture(authRequiredItemListResult(browser, effectiveParentId, params))
             }
             return serviceFuture("getChildren:$parentId") {
@@ -521,7 +518,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     "query" to query,
                 ),
             )
-            if (!mediaCatalog.authSnapshot.isAuthenticated) {
+            if (!hasStoredLoginCredentials()) {
                 return Futures.immediateFuture(authRequiredVoidResult(browser, "search:$query", params))
             }
             return serviceFuture("search:$query") {
@@ -548,7 +545,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     "pageSize" to pageSize.toString(),
                 ),
             )
-            if (!mediaCatalog.authSnapshot.isAuthenticated) {
+            if (!hasStoredLoginCredentials()) {
                 return Futures.immediateFuture(authRequiredItemListResult(browser, "search:$query", params))
             }
             return serviceFuture("getSearchResult:$query") {
@@ -603,7 +600,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 activeBook = playback.playback
                 configureAuthenticatedPlayback(playback.accessToken)
                 transientPlaybackRetryAttempt = 0
-                warmPlaybackCache(playback.playback, playback.accessToken, playback.playback.logicalStartPositionMs(), "set_media_items")
                 playbackItemsWithStartPosition(playback.playback, playback.playback.startQueuePosition())
             }
         }
@@ -676,6 +672,25 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 ),
             )
             return when {
+                action == ShelfDriveSessionPolicy.CMD_SEEK_BACK_15 -> serviceFuture(action) {
+                    seekBy(-SEEK_INCREMENT_MS)
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                action == ShelfDriveSessionPolicy.CMD_SEEK_FORWARD_15 -> serviceFuture(action) {
+                    seekBy(SEEK_INCREMENT_MS)
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
+                action == ShelfDriveSessionPolicy.CMD_CYCLE_PLAYBACK_SPEED -> serviceFuture(action) {
+                    player.setPlaybackSpeed(
+                        ShelfDriveSessionPolicy.nextPlaybackSpeed(player.playbackParameters.speed),
+                    )
+                    saveActivePlaybackState()
+                    updateMediaButtonPreferences()
+                    SessionResult(SessionResult.RESULT_SUCCESS)
+                }
+
                 action == AuthCommands.CMD_GET_AUTH_STATE -> serviceFuture(action) {
                     val snapshot = authRepository.bootstrap()
                     updateAuthSnapshot(snapshot)
@@ -696,7 +711,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     player.stop()
                     player.clearMediaItems()
                     activeBook = null
-                    activeAccessToken = null
                     transientPlaybackRetryAttempt = 0
                     playbackStateStorage.clear()
                     val snapshot = authRepository.logout()
@@ -714,7 +728,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     player.stop()
                     player.clearMediaItems()
                     activeBook = null
-                    activeAccessToken = null
                     transientPlaybackRetryAttempt = 0
                     playbackStateStorage.clear()
                     val snapshot = cacheRepository.clearCache()
@@ -835,7 +848,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             activeBook = resolved.playback
             configureAuthenticatedPlayback(resolved.accessToken)
             transientPlaybackRetryAttempt = 0
-            warmPlaybackCache(resolved.playback, resolved.accessToken, stored.positionMs, "playback_resumption")
             player.setPlaybackParameters(
                 PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
             )
@@ -992,7 +1004,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             activeBook = resolved.playback
             configureAuthenticatedPlayback(resolved.accessToken)
             transientPlaybackRetryAttempt = 0
-            warmPlaybackCache(resolved.playback, resolved.accessToken, stored.positionMs, "restore")
             setPlaybackQueue(resolved.playback, startPosition)
             player.setPlaybackParameters(
                 PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
@@ -1041,7 +1052,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 activeBook = playback.playback
                 configureAuthenticatedPlayback(playback.accessToken)
                 transientPlaybackRetryAttempt = 0
-                warmPlaybackCache(playback.playback, playback.accessToken, resumePositionMs, "unauthorized_recovery")
                 setPlaybackQueue(playback.playback, startPosition)
                 player.prepare()
                 player.playWhenReady = resumePlayWhenReady
@@ -1076,13 +1086,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 Log.w(TAG, "Transient playback retry failed for book=${currentBook.bookId}.", exception)
             }
         }
-    }
-
-    private fun warmPlaybackCache(reason: String) {
-        traceMethod("warmPlaybackCache(reason)", mapOf("reason" to reason))
-        val playback = activeBook ?: return
-        val accessToken = activeAccessToken ?: return
-        warmPlaybackCache(playback, accessToken, logicalPlaybackPositionMs(), reason)
     }
 
     private fun setPlaybackQueue(
@@ -1127,85 +1130,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         )
     }
 
-    private fun warmPlaybackCache(
-        playback: ResolvedAudiobookPlayback,
-        accessToken: String,
-        logicalPositionMs: Long,
-        reason: String,
-    ) {
-        traceMethod(
-            "warmPlaybackCache",
-            mapOf(
-                "bookId" to playback.bookId,
-                "logicalPositionMs" to logicalPositionMs.toString(),
-                "reason" to reason,
-            ),
-        )
-        val startPosition = PlaybackQueueMath.locateStartPosition(playback.queue, logicalPositionMs)
-        val requests = (startPosition.trackIndex..(startPosition.trackIndex + PRE_CACHE_TRACKS_AHEAD))
-            .mapNotNull { trackIndex ->
-                val track = playback.queue.getOrNull(trackIndex) ?: return@mapNotNull null
-                PlaybackAudioCache.PreCacheRequest(
-                    uri = track.contentUrl,
-                    cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, track.id),
-                    positionMs = if (trackIndex == startPosition.trackIndex) startPosition.positionMs else 0L,
-                    durationMs = track.durationMs,
-                )
-            }
-        if (requests.isEmpty()) {
-            return
-        }
-
-        playbackPreCacheJob?.cancel()
-        playbackPreCacheJob = serviceScope.launch(Dispatchers.IO) {
-            delay(PRE_CACHE_START_DELAY_MS)
-            runCatching {
-                PlaybackAudioCache.preCache(
-                    context = applicationContext,
-                    upstreamFactory = authenticatedDataSourceFactory(accessToken),
-                    requests = requests,
-                )
-            }.onSuccess { results ->
-                diagnosticEventLogger.record(
-                    "playback_precache_finished",
-                    mapOf(
-                        "reason" to reason,
-                        "bookId" to playback.bookId,
-                        "tracks" to results.size.toString(),
-                        "startBytes" to results.joinToString(",") { it.startByte.toString() },
-                        "requestedBytes" to results.sumOf { it.requestedBytes }.toString(),
-                    ),
-                )
-                Log.i(TAG, "Pre-cached ${results.size} playback track window(s) for book=${playback.bookId} reason=$reason.")
-            }.onFailure { exception ->
-                if (exception is CancellationException) {
-                    throw exception
-                }
-                diagnosticEventLogger.record(
-                    "playback_precache_failed",
-                    mapOf(
-                        "reason" to reason,
-                        "bookId" to playback.bookId,
-                        "exception" to exception::class.java.simpleName,
-                        "message" to exception.message,
-                    ),
-                )
-                Log.w(TAG, "Playback pre-cache failed for book=${playback.bookId} reason=$reason.", exception)
-            }
-        }
-    }
-
-    private fun authenticatedDataSourceFactory(accessToken: String): DataSource.Factory {
-        traceMethod("authenticatedDataSourceFactory")
-        val httpFactory = DefaultHttpDataSource.Factory()
-        httpFactory.setUserAgent("ShelfDrive/${BuildConfig.VERSION_NAME}")
-        httpFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
-        return DefaultDataSource.Factory(this, httpFactory)
-    }
-
     private fun configureAuthenticatedPlayback(accessToken: String) {
         traceMethod("configureAuthenticatedPlayback")
-        activeAccessToken = accessToken
         httpDataSourceFactory.setUserAgent("ShelfDrive/${BuildConfig.VERSION_NAME}")
         httpDataSourceFactory.setDefaultRequestProperties(mapOf("Authorization" to "Bearer $accessToken"))
     }
@@ -1271,6 +1197,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         saveActivePlaybackState()
     }
 
+    private fun seekBy(deltaMs: Long) {
+        traceMethod("seekBy", mapOf("deltaMs" to deltaMs.toString()))
+        val durationMs = activeBook?.durationMs?.takeIf { it > 0L }
+            ?: player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+        val targetPositionMs = (logicalPlaybackPositionMs() + deltaMs)
+            .coerceAtLeast(0L)
+            .let { target -> durationMs?.let { max -> target.coerceAtMost(max) } ?: target }
+        seekToLogicalPosition(targetPositionMs)
+    }
+
     private fun logicalPlaybackPositionMs(): Long {
         traceMethod("logicalPlaybackPositionMs")
         val playback = activeBook ?: return player.currentPosition.coerceAtLeast(0L)
@@ -1278,6 +1214,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             ?: playback.queue.firstOrNull()
             ?: return player.currentPosition.coerceAtLeast(0L)
         return (queueTrack.startOffsetMs + player.currentPosition.coerceAtLeast(0L))
+            .coerceAtMost(playback.durationMs ?: Long.MAX_VALUE)
+    }
+
+    private fun logicalBufferedPositionMs(): Long {
+        traceMethod("logicalBufferedPositionMs")
+        val playback = activeBook ?: return player.bufferedPosition.coerceAtLeast(0L)
+        val queueTrack = playback.queue.getOrNull(currentGlobalTrackIndex())
+            ?: playback.queue.firstOrNull()
+            ?: return player.bufferedPosition.coerceAtLeast(0L)
+        return (queueTrack.startOffsetMs + player.bufferedPosition.coerceAtLeast(0L))
             .coerceAtMost(playback.durationMs ?: Long.MAX_VALUE)
     }
 
@@ -1299,6 +1245,18 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 updatedAt = System.currentTimeMillis(),
             ),
         )
+    }
+
+    private fun updateMediaButtonPreferences() {
+        traceMethod("updateMediaButtonPreferences")
+        if (::mediaLibrarySession.isInitialized) {
+            mediaLibrarySession.setCustomLayout(
+                sessionPolicy.customLayout(player.playbackParameters.speed),
+            )
+            mediaLibrarySession.setMediaButtonPreferences(
+                sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed),
+            )
+        }
     }
 
     private fun Throwable.restoreFailureCategory(): String {
@@ -1331,9 +1289,112 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             }
     }
 
+    private inner class AudiobookProgressPlayer(delegate: Player) : ForwardingPlayer(delegate) {
+        override fun getAvailableCommands(): Player.Commands {
+            return super.getAvailableCommands()
+                .buildUpon()
+                .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+                .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+                .remove(Player.COMMAND_SEEK_TO_NEXT)
+                .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+                .remove(Player.COMMAND_GET_TIMELINE)
+                .remove(Player.COMMAND_SET_SPEED_AND_PITCH)
+                .build()
+        }
+
+        override fun getDuration(): Long {
+            traceMethod("AudiobookProgressPlayer.getDuration")
+            return activeBook?.durationMs?.takeIf { it > 0L } ?: super.getDuration()
+        }
+
+        override fun getCurrentPosition(): Long {
+            traceMethod("AudiobookProgressPlayer.getCurrentPosition")
+            return logicalPlaybackPositionMs()
+        }
+
+        override fun getBufferedPosition(): Long {
+            traceMethod("AudiobookProgressPlayer.getBufferedPosition")
+            return logicalBufferedPositionMs()
+        }
+
+        override fun getBufferedPercentage(): Int {
+            traceMethod("AudiobookProgressPlayer.getBufferedPercentage")
+            val durationMs = duration
+            if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
+                return super.getBufferedPercentage()
+            }
+            return ((bufferedPosition.coerceAtLeast(0L) * 100L) / durationMs)
+                .coerceIn(0L, 100L)
+                .toInt()
+        }
+
+        override fun getContentDuration(): Long {
+            traceMethod("AudiobookProgressPlayer.getContentDuration")
+            return duration
+        }
+
+        override fun getContentPosition(): Long {
+            traceMethod("AudiobookProgressPlayer.getContentPosition")
+            return currentPosition
+        }
+
+        override fun getContentBufferedPosition(): Long {
+            traceMethod("AudiobookProgressPlayer.getContentBufferedPosition")
+            return bufferedPosition
+        }
+
+        override fun getMediaItemCount(): Int {
+            return if (activeBook != null) 1 else super.getMediaItemCount()
+        }
+
+        override fun getCurrentMediaItemIndex(): Int {
+            return if (activeBook != null) 0 else super.getCurrentMediaItemIndex()
+        }
+
+        override fun getMediaItemAt(index: Int): MediaItem {
+            if (activeBook != null && index != 0) {
+                throw IndexOutOfBoundsException("Audiobook session exposes a single logical item.")
+            }
+            return super.getMediaItemAt(if (activeBook != null) player.currentMediaItemIndex else index)
+        }
+
+        override fun hasPreviousMediaItem(): Boolean {
+            return if (activeBook != null) false else super.hasPreviousMediaItem()
+        }
+
+        override fun hasNextMediaItem(): Boolean {
+            return if (activeBook != null) false else super.hasNextMediaItem()
+        }
+
+        override fun seekTo(positionMs: Long) {
+            traceMethod("AudiobookProgressPlayer.seekTo", mapOf("positionMs" to positionMs.toString()))
+            seekToLogicalPosition(positionMs)
+        }
+
+        override fun seekBack() {
+            traceMethod("AudiobookProgressPlayer.seekBack")
+            seekBy(-SEEK_INCREMENT_MS)
+        }
+
+        override fun seekForward() {
+            traceMethod("AudiobookProgressPlayer.seekForward")
+            seekBy(SEEK_INCREMENT_MS)
+        }
+
+        override fun play() {
+            traceMethod("AudiobookProgressPlayer.play")
+            if (activeBook != null && player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+            super.play()
+        }
+    }
+
     private fun updateAuthSnapshot(snapshot: AuthSnapshot) {
         traceMethod("updateAuthSnapshot", mapOf("status" to snapshot.status.name))
         mediaCatalog.authSnapshot = snapshot
+        mediaCatalog.hasStoredLoginCredentials = hasStoredLoginCredentials()
         notifyBrowseTreeChanged()
     }
 
@@ -1357,6 +1418,14 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
+    }
+
+    private fun hasStoredLoginCredentials(): Boolean {
+        val stored = authStorage.load()
+        val baseUrl = stored.baseUrl?.trim().orEmpty()
+        val username = stored.username?.trim().orEmpty()
+        val password = stored.password.orEmpty()
+        return baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
     }
 
     private fun String.normalizedBrowseParentId(): String {
@@ -1497,9 +1566,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         private const val SEEK_INCREMENT_MS = 15_000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
         private const val RESTORE_TIMEOUT_MS = 8_000L
-        private const val PRE_CACHE_TRACKS_AHEAD = 1
         private const val AUTH_REQUIRED_SETTINGS_REQUEST_CODE = 1001
-        private const val PRE_CACHE_START_DELAY_MS = 1_500L
         private const val ROOT_CHILD_COUNT = 3
         private val TRANSIENT_PLAYBACK_RETRY_DELAYS_MS = listOf(1_000L, 3_000L, 8_000L, 15_000L)
         private val TRANSIENT_HTTP_STATUS_CODES = setOf(502, 503, 504)

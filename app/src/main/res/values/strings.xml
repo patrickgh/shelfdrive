@@ -56,12 +56,6 @@
     <string name="settings_diagnostics_upload_success">Last upload successful.</string>
     <string name="settings_diagnostics_upload_failed">Last upload failed.</string>
     <string name="settings_diagnostics_upload_finished">Finished: %1$s</string>
-    <string name="settings_launch_files_title">Launch Files app</string>
-    <string name="settings_launch_files_summary">Opens the built-in Android Files app, if it is available on this head unit.</string>
-    <string name="settings_launch_files_failed_title">Files app could not be launched</string>
-    <string name="settings_launch_files_failed_message">ShelfDrive tried these built-in Files activities:\n\n%1$s</string>
-    <string name="settings_launch_files_failed_message_with_errors">ShelfDrive tried these built-in Files activities:\n\n%1$s\n\nErrors:\n%2$s</string>
-    <string name="settings_launch_files_attempt">%1$s/%2$s</string>
     <string name="settings_app_version_title">App version</string>
     <string name="settings_app_version_summary">%1$s (%2$d)</string>
     <string name="settings_app_version_unknown">Unknown</string>
