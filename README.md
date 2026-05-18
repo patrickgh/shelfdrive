@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/patrickgh/shelfdrive/releases/latest"><img alt="Latest GitHub Release" src="https://img.shields.io/github/v/release/patrickgh/shelfdrive?style=flat-square"/></a>
   <img alt="Status" src="https://img.shields.io/badge/status-alpha-f59e0b">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20Automotive%20OS-3DDC84?logo=android">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white">
@@ -52,7 +53,6 @@ Current app metadata:
 
 - App name: `ShelfDrive`
 - Application ID: `io.shelfdrive.app`
-- Version: `0.3.7`
 - Minimum SDK: `29`
 - Target SDK: `35`
 - Supported form factor: Android Automotive OS
