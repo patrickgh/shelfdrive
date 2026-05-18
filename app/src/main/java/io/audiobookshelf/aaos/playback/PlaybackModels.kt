@@ -17,6 +17,7 @@ data class ResolvedAudiobookPlayback(
 data class ResolvedAudiobookPlaybackSession(
     val playback: ResolvedAudiobookPlayback,
     val accessToken: String,
+    val sessionId: String?,
 )
 
 data class ResolvedPlaybackTrack(

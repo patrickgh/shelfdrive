@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.room.withTransaction
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.MediaProgressSummary
-import io.audiobookshelf.aaos.absapi.MediaProgressUpdateRequest
+import io.audiobookshelf.aaos.absapi.PlaybackSessionUpdateRequest
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestContext
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
@@ -12,6 +12,7 @@ import io.audiobookshelf.aaos.auth.AuthRepository
 import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
+import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -21,6 +22,7 @@ class ProgressSyncRepository(
     private val authRepository: AuthRepository,
     private val authStorage: AuthStorage,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
+    private val diagnosticEventLogger: DiagnosticEventLogger? = null,
 ) {
     private val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
 
@@ -44,23 +46,27 @@ class ProgressSyncRepository(
     }
 
     suspend fun pushProgress(snapshot: PlaybackProgressSnapshot) = withContext(Dispatchers.IO) {
-        val pendingProgress = saveLocalProgress(snapshot, pendingUpload = true)
+        val localProgress = saveLocalProgress(snapshot)
             ?: return@withContext false
         try {
             authenticatedRequestRunner.execute { context ->
-                uploadProgress(pendingProgress, context)
+                syncPlaybackSession(snapshot, context)
+            }
+            if (snapshot.isFinished) {
+                database.mediaProgressDao().deleteByBookId(snapshot.bookId)
+            } else {
+                database.mediaProgressDao().upsert(localProgress)
             }
             true
         } catch (exception: AuthenticationRequiredException) {
             false
         } catch (exception: IOException) {
-            Log.w(TAG, "Progress upload deferred for ${snapshot.bookId}.", exception)
-            true
+            Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
+            false
         }
     }
 
     private suspend fun refreshInProgressOnce(context: AuthenticatedRequestContext) {
-        flushPendingUploads(context)
         val items = apiClient.getItemsInProgress(context.baseUrl, context.accessToken)
         val progressEntries = mutableListOf<MediaProgressEntity>()
         items.forEach { item ->
@@ -79,23 +85,15 @@ class ProgressSyncRepository(
         }
 
         val knownProgressEntries = progressEntries.onlyForKnownBooks()
-        val pendingProgressEntries = database.mediaProgressDao().getPendingUploads().onlyForKnownBooks()
-        val mergedEntries = (knownProgressEntries + pendingProgressEntries)
-            .associateBy { it.bookId }
-            .values
-            .toList()
         database.withTransaction {
             database.mediaProgressDao().clearAll()
-            if (mergedEntries.isNotEmpty()) {
-                database.mediaProgressDao().upsertAll(mergedEntries)
+            if (knownProgressEntries.isNotEmpty()) {
+                database.mediaProgressDao().upsertAll(knownProgressEntries)
             }
         }
     }
 
-    private suspend fun saveLocalProgress(
-        snapshot: PlaybackProgressSnapshot,
-        pendingUpload: Boolean,
-    ): MediaProgressEntity? {
+    private suspend fun saveLocalProgress(snapshot: PlaybackProgressSnapshot): MediaProgressEntity? {
         val existing = database.mediaProgressDao().getByBookId(snapshot.bookId)
         val catalogBook = database.bookDao().getPlayableById(snapshot.bookId)
         if (catalogBook == null) {
@@ -116,45 +114,72 @@ class ProgressSyncRepository(
             lastUpdateAt = now,
             startedAt = existing?.startedAt ?: now,
             finishedAt = if (snapshot.isFinished) now else null,
-            pendingUpload = pendingUpload,
+            pendingUpload = false,
         )
         database.mediaProgressDao().upsert(entity)
         return entity
     }
 
-    private suspend fun uploadProgress(
-        progress: MediaProgressEntity,
+    private suspend fun syncPlaybackSession(
+        snapshot: PlaybackProgressSnapshot,
         context: AuthenticatedRequestContext,
     ) {
-        apiClient.updateMediaProgress(
-            baseUrl = context.baseUrl,
-            accessToken = context.accessToken,
-            itemId = progress.bookId,
-            progressUpdate = MediaProgressUpdateRequest(
-                currentTimeMs = progress.currentTimeMs,
-                durationMs = progress.durationMs,
-                progressFraction = progress.progressFraction,
-                isFinished = progress.isFinished,
-                hideFromContinueListening = progress.hideFromContinueListening,
-                startedAt = progress.startedAt,
-                finishedAt = progress.finishedAt,
+        val sessionId = snapshot.playbackSessionId
+        if (sessionId.isNullOrBlank()) {
+            diagnosticEventLogger?.record(
+                "playback_session_sync_skipped",
+                mapOf(
+                    "reason" to "missing_session_id",
+                    "bookId" to snapshot.bookId,
+                    "progressReason" to snapshot.reason.name,
+                ),
+            )
+            return
+        }
+        val durationMs = snapshot.durationMs
+        if (durationMs == null || durationMs <= 0L) {
+            diagnosticEventLogger?.record(
+                "playback_session_sync_skipped",
+                mapOf(
+                    "reason" to "missing_duration",
+                    "bookId" to snapshot.bookId,
+                    "sessionId" to sessionId,
+                    "progressReason" to snapshot.reason.name,
+                ),
+            )
+            return
+        }
+        diagnosticEventLogger?.record(
+            "playback_session_sync_started",
+            mapOf(
+                "bookId" to snapshot.bookId,
+                "sessionId" to sessionId,
+                "currentTimeMs" to snapshot.currentTimeMs.toString(),
+                "durationMs" to durationMs.toString(),
+                "timeListenedMs" to snapshot.timeListenedMs.toString(),
+                "reason" to snapshot.reason.name,
+                "isFinished" to snapshot.isFinished.toString(),
             ),
         )
-
-        if (progress.isFinished) {
-            database.mediaProgressDao().deleteByBookId(progress.bookId)
+        val sessionUpdate = PlaybackSessionUpdateRequest(
+            currentTimeMs = snapshot.currentTimeMs,
+            durationMs = durationMs,
+            timeListenedMs = snapshot.timeListenedMs,
+        )
+        if (snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED) {
+            apiClient.closePlaybackSession(
+                baseUrl = context.baseUrl,
+                accessToken = context.accessToken,
+                sessionId = sessionId,
+                sessionUpdate = sessionUpdate,
+            )
         } else {
-            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
-        }
-    }
-
-    private suspend fun flushPendingUploads(context: AuthenticatedRequestContext) {
-        database.mediaProgressDao().getPendingUploads().forEach { pending ->
-            runCatching {
-                uploadProgress(pending, context)
-            }.onFailure { exception ->
-                Log.w(TAG, "Pending progress upload still deferred for ${pending.bookId}.", exception)
-            }
+            apiClient.syncPlaybackSession(
+                baseUrl = context.baseUrl,
+                accessToken = context.accessToken,
+                sessionId = sessionId,
+                sessionUpdate = sessionUpdate,
+            )
         }
     }
 

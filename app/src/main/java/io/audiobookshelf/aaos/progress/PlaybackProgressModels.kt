@@ -2,8 +2,10 @@ package io.audiobookshelf.aaos.progress
 
 data class PlaybackProgressSnapshot(
     val bookId: String,
+    val playbackSessionId: String?,
     val currentTimeMs: Long,
     val durationMs: Long?,
+    val timeListenedMs: Long,
     val isFinished: Boolean,
     val reason: PlaybackProgressReason,
 )

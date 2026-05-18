@@ -25,13 +25,15 @@ class AudiobookshelfPlaybackRepository(
 
     suspend fun resolveBook(bookId: String): ResolvedAudiobookPlaybackSession = withContext(Dispatchers.IO) {
         authenticatedRequestRunner.execute { context ->
-            ResolvedAudiobookPlaybackSession(
-                playback = resolveBookOnce(
-                    bookId = bookId,
-                    baseUrl = context.baseUrl,
-                    accessToken = context.accessToken,
-                ),
+            val resolved = resolveBookOnce(
+                bookId = bookId,
+                baseUrl = context.baseUrl,
                 accessToken = context.accessToken,
+            )
+            ResolvedAudiobookPlaybackSession(
+                playback = resolved.playback,
+                accessToken = context.accessToken,
+                sessionId = resolved.sessionId,
             )
         }
     }
@@ -40,7 +42,7 @@ class AudiobookshelfPlaybackRepository(
         bookId: String,
         baseUrl: String,
         accessToken: String,
-    ): ResolvedAudiobookPlayback {
+    ): ResolvedPlaybackSession {
         val playbackSession = apiClient.createPlaybackSession(baseUrl, accessToken, bookId)
         val catalogBook = database.bookDao().getPlayableById(bookId)
 
@@ -73,24 +75,27 @@ class AudiobookshelfPlaybackRepository(
             ?: 0L
         val startPosition = PlaybackQueueMath.locateStartPosition(queue, requestedStart)
 
-        return ResolvedAudiobookPlayback(
-            bookId = bookId,
-            title = playbackSession.displayTitle
-                ?: catalogBook?.title
-                ?: playbackSession.title
-                ?: "Unbekanntes Hoerbuch",
-            author = playbackSession.displayAuthor
-                ?: catalogBook?.authorDisplay
-                ?: playbackSession.author,
-            coverPath = playbackSession.coverPath ?: catalogBook?.coverPath,
-            artworkUri = ArtworkUriFactory.bookCover(
-                bookId,
-                ArtworkUriFactory.signatureFor(playbackSession.coverPath ?: catalogBook?.coverPath),
+        return ResolvedPlaybackSession(
+            playback = ResolvedAudiobookPlayback(
+                bookId = bookId,
+                title = playbackSession.displayTitle
+                    ?: catalogBook?.title
+                    ?: playbackSession.title
+                    ?: "Unbekanntes Hoerbuch",
+                author = playbackSession.displayAuthor
+                    ?: catalogBook?.authorDisplay
+                    ?: playbackSession.author,
+                coverPath = playbackSession.coverPath ?: catalogBook?.coverPath,
+                artworkUri = ArtworkUriFactory.bookCover(
+                    bookId,
+                    ArtworkUriFactory.signatureFor(playbackSession.coverPath ?: catalogBook?.coverPath),
+                ),
+                durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations() ?: catalogBook?.durationMs?.takeIf { it > 0L },
+                queue = queue,
+                startIndex = startPosition.trackIndex,
+                startPositionMs = startPosition.positionMs,
             ),
-            durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations() ?: catalogBook?.durationMs?.takeIf { it > 0L },
-            queue = queue,
-            startIndex = startPosition.trackIndex,
-            startPositionMs = startPosition.positionMs,
+            sessionId = playbackSession.sessionId,
         )
     }
 
@@ -129,6 +134,11 @@ class AudiobookshelfPlaybackRepository(
         }
     }
 }
+
+private data class ResolvedPlaybackSession(
+    val playback: ResolvedAudiobookPlayback,
+    val sessionId: String?,
+)
 
 class PlaybackResolutionException(
     override val message: String,

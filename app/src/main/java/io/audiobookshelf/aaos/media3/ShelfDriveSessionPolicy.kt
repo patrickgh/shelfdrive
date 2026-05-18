@@ -46,7 +46,6 @@ internal class ShelfDriveSessionPolicy(
             .remove(Player.COMMAND_SEEK_TO_NEXT)
             .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
             .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
-            .remove(Player.COMMAND_GET_TIMELINE)
             .remove(Player.COMMAND_SET_SPEED_AND_PITCH)
             .build()
     }

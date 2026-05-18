@@ -286,6 +286,7 @@ class AudiobookshelfApiClient(
         }
 
         return PlaybackSessionSummary(
+            sessionId = root.optString("id").takeIf { it.isNotBlank() },
             bookId = itemId,
             displayTitle = root.optString("displayTitle").takeIf { it.isNotBlank() },
             displayAuthor = root.optString("displayAuthor").takeIf { it.isNotBlank() },
@@ -297,6 +298,63 @@ class AudiobookshelfApiClient(
             startTimeMs = secondsToMillis(root.optDouble("startTime")),
             audioTracks = tracks,
         )
+    }
+
+    @Throws(ApiException::class, IOException::class)
+    suspend fun syncPlaybackSession(
+        baseUrl: String,
+        accessToken: String,
+        sessionId: String,
+        sessionUpdate: PlaybackSessionUpdateRequest,
+    ) {
+        updatePlaybackSession(
+            baseUrl = baseUrl,
+            accessToken = accessToken,
+            sessionId = sessionId,
+            pathSuffix = "sync",
+            sessionUpdate = sessionUpdate,
+        )
+    }
+
+    @Throws(ApiException::class, IOException::class)
+    suspend fun closePlaybackSession(
+        baseUrl: String,
+        accessToken: String,
+        sessionId: String,
+        sessionUpdate: PlaybackSessionUpdateRequest,
+    ) {
+        updatePlaybackSession(
+            baseUrl = baseUrl,
+            accessToken = accessToken,
+            sessionId = sessionId,
+            pathSuffix = "close",
+            sessionUpdate = sessionUpdate,
+        )
+    }
+
+    private suspend fun updatePlaybackSession(
+        baseUrl: String,
+        accessToken: String,
+        sessionId: String,
+        pathSuffix: String,
+        sessionUpdate: PlaybackSessionUpdateRequest,
+    ) {
+        val response = httpClient.execute(
+            baseUrl = baseUrl,
+            request = HttpRequest(
+                path = "/api/session/$sessionId/$pathSuffix",
+                method = "POST",
+                headers = mapOf(
+                    "Authorization" to "Bearer $accessToken",
+                    "Content-Type" to "application/json",
+                ),
+                body = playbackSessionUpdateRequestBody(sessionUpdate),
+                retryProfile = RetryProfile.NONE,
+            ),
+        )
+        if (response.statusCode !in 200..299) {
+            throw ApiException(response.statusCode, extractErrorMessage(response.body))
+        }
     }
 
     @Throws(ApiException::class, IOException::class)
@@ -355,33 +413,6 @@ class AudiobookshelfApiClient(
             finishedAt = parseAbsTimestamp(root.opt("finishedAt")),
             lastUpdateAt = parseAbsTimestamp(root.opt("lastUpdate")) ?: System.currentTimeMillis(),
         )
-    }
-
-    @Throws(ApiException::class, IOException::class)
-    suspend fun updateMediaProgress(
-        baseUrl: String,
-        accessToken: String,
-        itemId: String,
-        progressUpdate: MediaProgressUpdateRequest,
-    ) {
-        val body = mediaProgressUpdateRequestBody(progressUpdate)
-
-        val response = httpClient.execute(
-            baseUrl = baseUrl,
-            request = HttpRequest(
-                path = "/api/me/progress/$itemId",
-                method = "PATCH",
-                headers = mapOf(
-                    "Authorization" to "Bearer $accessToken",
-                    "Content-Type" to "application/json",
-                ),
-                body = body,
-                retryProfile = RetryProfile.NONE,
-            ),
-        )
-        if (response.statusCode !in 200..299) {
-            throw ApiException(response.statusCode, extractErrorMessage(response.body))
-        }
     }
 
     private suspend fun executeAuthorized(
@@ -609,19 +640,15 @@ class AudiobookshelfApiClient(
     }
 }
 
-internal fun mediaProgressUpdateRequestBody(progressUpdate: MediaProgressUpdateRequest): String {
-    return JSONObject(mediaProgressUpdateRequestFields(progressUpdate)).toString()
+internal fun playbackSessionUpdateRequestBody(sessionUpdate: PlaybackSessionUpdateRequest): String {
+    return JSONObject(playbackSessionUpdateRequestFields(sessionUpdate)).toString()
 }
 
-internal fun mediaProgressUpdateRequestFields(progressUpdate: MediaProgressUpdateRequest): Map<String, Any> {
+internal fun playbackSessionUpdateRequestFields(sessionUpdate: PlaybackSessionUpdateRequest): Map<String, Any> {
     return buildMap {
-        put("currentTime", progressUpdate.currentTimeMs / 1000.0)
-        progressUpdate.durationMs?.let { put("duration", it / 1000.0) }
-        progressUpdate.progressFraction?.let { put("progress", it) }
-        put("isFinished", progressUpdate.isFinished)
-        put("hideFromContinueListening", progressUpdate.hideFromContinueListening)
-        progressUpdate.startedAt?.let { put("startedAt", it) }
-        progressUpdate.finishedAt?.let { put("finishedAt", it) }
+        put("currentTime", sessionUpdate.currentTimeMs / 1000.0)
+        put("timeListened", sessionUpdate.timeListenedMs / 1000.0)
+        put("duration", sessionUpdate.durationMs / 1000.0)
     }
 }
 
@@ -669,6 +696,7 @@ data class AuthorSummary(
 )
 
 data class PlaybackSessionSummary(
+    val sessionId: String?,
     val bookId: String,
     val displayTitle: String?,
     val displayAuthor: String?,
@@ -709,14 +737,10 @@ data class MediaProgressSummary(
     val lastUpdateAt: Long,
 )
 
-data class MediaProgressUpdateRequest(
+data class PlaybackSessionUpdateRequest(
     val currentTimeMs: Long,
-    val durationMs: Long?,
-    val progressFraction: Double?,
-    val isFinished: Boolean,
-    val hideFromContinueListening: Boolean = false,
-    val startedAt: Long?,
-    val finishedAt: Long?,
+    val durationMs: Long,
+    val timeListenedMs: Long,
 )
 
 class ApiException(
