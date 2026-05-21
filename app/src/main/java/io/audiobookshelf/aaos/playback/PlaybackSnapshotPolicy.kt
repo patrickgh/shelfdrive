@@ -1,5 +1,6 @@
 package io.audiobookshelf.aaos.playback
 
+import android.support.v4.media.MediaBrowserCompat
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -40,18 +41,17 @@ object PlaybackSnapshotPolicy {
             .build()
     }
 
-    @OptIn(UnstableApi::class)
     fun storedStateFromBrowseItem(
         bookId: String,
-        item: MediaItem,
+        item: MediaBrowserCompat.MediaItem,
         nowMs: Long,
     ): StoredPlaybackState {
         return StoredPlaybackState(
             bookId = bookId,
-            title = item.mediaMetadata.title?.toString(),
-            author = item.mediaMetadata.artist?.toString(),
-            artworkUri = item.mediaMetadata.artworkUri,
-            durationMs = item.mediaMetadata.durationMs,
+            title = item.description.title?.toString(),
+            author = item.description.subtitle?.toString(),
+            artworkUri = item.description.iconUri,
+            durationMs = null,
             positionMs = 0L,
             trackIndex = 0,
             playbackSpeed = 1f,

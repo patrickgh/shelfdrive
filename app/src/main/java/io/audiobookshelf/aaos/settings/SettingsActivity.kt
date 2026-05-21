@@ -4,13 +4,12 @@ import android.content.ComponentName
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.ResultReceiver
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.session.MediaControllerCompat
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
-import androidx.media3.session.MediaController
-import androidx.media3.session.SessionCommand
-import androidx.media3.session.SessionToken
 import com.google.android.material.appbar.MaterialToolbar
-import com.google.common.util.concurrent.ListenableFuture
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthSnapshot
@@ -25,7 +24,7 @@ import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadStorage
 import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploader
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsSnapshot
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
-import io.audiobookshelf.aaos.media3.ShelfDriveMediaLibraryService
+import io.audiobookshelf.aaos.mediacompat.ShelfDriveMediaBrowserService
 import io.audiobookshelf.aaos.sync.SyncCommands
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
@@ -37,8 +36,8 @@ import kotlinx.coroutines.launch
 
 class SettingsActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var controllerFuture: ListenableFuture<MediaController>? = null
-    private var mediaController: MediaController? = null
+    private var mediaBrowser: MediaBrowserCompat? = null
+    private var mediaController: MediaControllerCompat? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var currentAuthSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
     private var currentSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
@@ -91,9 +90,8 @@ class SettingsActivity : AppCompatActivity() {
     override fun onStop() {
         isStarted = false
         mainHandler.removeCallbacksAndMessages(null)
-        controllerFuture?.let(MediaController::releaseFuture)
-        controllerFuture = null
-        mediaController?.release()
+        mediaBrowser?.disconnect()
+        mediaBrowser = null
         mediaController = null
         if (::diagnosticEventLogger.isInitialized) {
             diagnosticEventLogger.record("settings_stopped")
@@ -239,85 +237,74 @@ class SettingsActivity : AppCompatActivity() {
             renderState()
             return
         }
-        val future = controller.sendCustomCommand(
-            SessionCommand(command, Bundle.EMPTY),
+        controller.sendCommand(
+            command,
             extras ?: Bundle.EMPTY,
-        )
-        future.addListener(
-            {
-                runCatching {
-                    future.get()
-                }.onSuccess { result ->
+            object : ResultReceiver(mainHandler) {
+                override fun onReceiveResult(resultCode: Int, resultData: Bundle?) {
                     diagnosticEventLogger.record(
                         "settings_command_success",
                         mapOf(
                             "command" to command,
-                            "resultCode" to result.resultCode.toString(),
+                            "resultCode" to resultCode.toString(),
                         ),
                     )
-                    onResult(result.extras)
-                }.onFailure { exception ->
-                    diagnosticEventLogger.record(
-                        "settings_command_failed",
-                        mapOf(
-                            "command" to command,
-                            "exception" to exception::class.java.simpleName,
-                            "message" to exception.message,
-                        ),
-                    )
-                    scheduleReconnect()
-                    renderState()
+                    if (resultCode == AuthCommands.RESULT_OK) {
+                        onResult(resultData)
+                    } else {
+                        scheduleReconnect()
+                        renderState()
+                    }
                 }
             },
-            mainExecutor,
         )
     }
 
     private fun connectMediaController() {
-        if (!isStarted || mediaController != null || controllerFuture != null) {
+        if (!isStarted || mediaController != null || mediaBrowser != null) {
             return
         }
-        val token = SessionToken(
+        val browser = MediaBrowserCompat(
             this,
-            ComponentName(this, ShelfDriveMediaLibraryService::class.java),
-        )
-        val future = MediaController.Builder(this, token).buildAsync()
-        controllerFuture = future
-        diagnosticEventLogger.record("settings_controller_connect_started")
-        future.addListener(
-            {
-                runCatching {
-                    future.get()
-                }.onSuccess { controller ->
-                    if (!isStarted) {
-                        MediaController.releaseFuture(future)
-                        return@addListener
-                    }
+            ComponentName(this, ShelfDriveMediaBrowserService::class.java),
+            object : MediaBrowserCompat.ConnectionCallback() {
+                override fun onConnected() {
+                    val connectedBrowser = mediaBrowser ?: return
                     reconnectAttempt = 0
-                    mediaController = controller
-                    controllerFuture = null
+                    mediaController = MediaControllerCompat(
+                        this@SettingsActivity,
+                        connectedBrowser.sessionToken,
+                    )
                     diagnosticEventLogger.record("settings_controller_connect_success")
                     renderState()
                     requestAuthState()
                     requestSyncState()
                     requestCacheState()
-                }.onFailure { exception ->
-                    controllerFuture = null
+                }
+
+                override fun onConnectionSuspended() {
                     mediaController = null
+                    mediaBrowser = null
                     loginInProgress = false
-                    diagnosticEventLogger.record(
-                        "settings_controller_connect_failed",
-                        mapOf(
-                            "exception" to exception::class.java.simpleName,
-                            "message" to exception.message,
-                        ),
-                    )
+                    diagnosticEventLogger.record("settings_controller_connect_suspended")
+                    renderState()
+                    scheduleReconnect()
+                }
+
+                override fun onConnectionFailed() {
+                    mediaController = null
+                    mediaBrowser = null
+                    loginInProgress = false
+                    diagnosticEventLogger.record("settings_controller_connect_failed")
                     renderState()
                     scheduleReconnect()
                 }
             },
-            mainExecutor,
+            null,
         )
+        mediaBrowser = browser
+        diagnosticEventLogger.record("settings_controller_connect_started")
+        browser.connect()
     }
 
     private fun scheduleReconnect() {

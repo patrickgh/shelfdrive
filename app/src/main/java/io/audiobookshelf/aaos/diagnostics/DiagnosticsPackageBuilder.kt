@@ -139,7 +139,7 @@ class DiagnosticsPackageBuilder(
                 "mediaHostIntents",
                 JSONArray().apply {
                     put(packageManager.describeIntent(ACTION_MEDIA_TEMPLATE_V2, EXTRA_MEDIA_COMPONENT, EXTRA_MEDIA_ID))
-                    put(packageManager.describeIntent(ACTION_MEDIA_TEMPLATE, EXTRA_MEDIA_COMPONENT, EXTRA_LEGACY_MEDIA_ID))
+                    put(packageManager.describeIntent(ACTION_MEDIA_TEMPLATE, EXTRA_MEDIA_COMPONENT))
                 },
             )
         }.toString(2)
@@ -162,12 +162,14 @@ class DiagnosticsPackageBuilder(
     private fun PackageManager.describeIntent(
         action: String,
         componentExtra: String,
-        mediaIdExtra: String,
+        mediaIdExtra: String? = null,
     ): JSONObject {
-        val mediaComponent = "${BuildConfig.APPLICATION_ID}/io.audiobookshelf.aaos.media3.ShelfDriveMediaLibraryService"
+        val mediaComponent = "${BuildConfig.APPLICATION_ID}/io.audiobookshelf.aaos.mediacompat.ShelfDriveMediaBrowserService"
         val intent = Intent(action)
             .putExtra(componentExtra, mediaComponent)
-            .putExtra(mediaIdExtra, ROOT_MEDIA_ID)
+        if (mediaIdExtra != null) {
+            intent.putExtra(mediaIdExtra, ROOT_MEDIA_ID)
+        }
         val defaultMatches = queryIntentActivitiesCompat(intent, PackageManager.MATCH_DEFAULT_ONLY)
         val systemMatches = queryIntentActivitiesCompat(
             intent,
@@ -250,7 +252,6 @@ class DiagnosticsPackageBuilder(
         private const val ACTION_MEDIA_TEMPLATE_V2 = "androidx.car.app.mediaextensions.action.MEDIA_TEMPLATE_V2"
         private const val EXTRA_MEDIA_COMPONENT = "android.car.intent.extra.MEDIA_COMPONENT"
         private const val EXTRA_MEDIA_ID = "androidx.car.app.mediaextensions.extra.KEY_MEDIA_ID"
-        private const val EXTRA_LEGACY_MEDIA_ID = "com.android.car.media.intent.extra.MEDIA_ID"
         private const val ROOT_MEDIA_ID = "root"
         private val DIAGNOSTIC_PACKAGES = listOf(
             "com.android.car.media",

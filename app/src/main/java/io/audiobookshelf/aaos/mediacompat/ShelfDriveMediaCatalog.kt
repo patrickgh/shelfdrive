@@ -1,14 +1,10 @@
-package io.audiobookshelf.aaos.media3
+package io.audiobookshelf.aaos.mediacompat
 
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
-import androidx.annotation.OptIn
-import androidx.media3.session.MediaConstants
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.session.MediaLibraryService.LibraryParams
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.auth.AuthSnapshot
@@ -21,7 +17,6 @@ import io.audiobookshelf.aaos.catalog.persistence.BookEntity
 import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
 
-@OptIn(UnstableApi::class)
 internal class ShelfDriveMediaCatalog(
     private val context: Context,
     private val browseRepository: CatalogBrowseRepository,
@@ -30,19 +25,23 @@ internal class ShelfDriveMediaCatalog(
     var syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
     var hasStoredLoginCredentials: Boolean = false
 
-    fun buildRootItem(): MediaItem {
+    fun rootExtras(): Bundle {
+        return childStyleExtras(
+            browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+        )
+    }
+
+    fun buildRootItem(): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(
             mediaId = BrowseNodeId.Root.serialize(),
             title = context.getString(R.string.app_name),
             iconUri = drawableUri(R.drawable.ic_app_icon),
-            extras = childStyleExtras(
-                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            ),
+            extras = rootExtras(),
         )
     }
 
-    suspend fun loadChildren(parentId: String): List<MediaItem> {
+    suspend fun loadChildren(parentId: String): List<MediaBrowserCompat.MediaItem> {
         val node = BrowseNodeId.parse(parentId) ?: return emptyList()
         return when (node) {
             BrowseNodeId.Root -> listOf(buildRecentRootItem(), buildBooksRootItem(), buildAuthorsRootItem())
@@ -59,7 +58,7 @@ internal class ShelfDriveMediaCatalog(
         }
     }
 
-    suspend fun loadItem(mediaId: String): MediaItem? {
+    suspend fun loadItem(mediaId: String): MediaBrowserCompat.MediaItem? {
         val node = BrowseNodeId.parse(mediaId) ?: return null
         return when (node) {
             BrowseNodeId.Root -> buildRootItem()
@@ -75,7 +74,7 @@ internal class ShelfDriveMediaCatalog(
         }
     }
 
-    suspend fun loadSearchResults(query: String): List<MediaItem> {
+    suspend fun loadSearchResults(query: String): List<MediaBrowserCompat.MediaItem> {
         if (!hasStoredLoginCredentials) {
             return emptyList()
         }
@@ -105,23 +104,11 @@ internal class ShelfDriveMediaCatalog(
         )
     }
 
-    fun rootParams(params: LibraryParams?): LibraryParams {
-        val extras = Bundle(params?.extras ?: Bundle.EMPTY).apply {
-            putInt(
-                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-            putInt(
-                MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
-                MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-            )
-        }
-        return LibraryParams.Builder()
-            .setExtras(extras)
-            .build()
-    }
-
-    fun pageItems(items: List<MediaItem>, page: Int, pageSize: Int): List<MediaItem> {
+    fun pageItems(
+        items: List<MediaBrowserCompat.MediaItem>,
+        page: Int,
+        pageSize: Int,
+    ): List<MediaBrowserCompat.MediaItem> {
         if (page < 0 || pageSize <= 0) {
             return items
         }
@@ -132,7 +119,7 @@ internal class ShelfDriveMediaCatalog(
         return items.subList(fromIndex, (fromIndex + pageSize).coerceAtMost(items.size))
     }
 
-    private suspend fun loadRecentItems(): List<MediaItem> {
+    private suspend fun loadRecentItems(): List<MediaBrowserCompat.MediaItem> {
         if (!hasStoredLoginCredentials) {
             return emptyList()
         }
@@ -161,7 +148,7 @@ internal class ShelfDriveMediaCatalog(
         )
     }
 
-    private suspend fun loadBooksItems(): List<MediaItem> {
+    private suspend fun loadBooksItems(): List<MediaBrowserCompat.MediaItem> {
         if (!hasStoredLoginCredentials) {
             return emptyList()
         }
@@ -188,14 +175,14 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
         }
     }
 
-    private suspend fun loadAuthorsItems(): List<MediaItem> {
+    private suspend fun loadAuthorsItems(): List<MediaBrowserCompat.MediaItem> {
         if (!hasStoredLoginCredentials) {
             return emptyList()
         }
@@ -222,14 +209,14 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
         }
     }
 
-    private suspend fun loadAuthorItems(authorId: String): List<MediaItem> {
+    private suspend fun loadAuthorItems(authorId: String): List<MediaBrowserCompat.MediaItem> {
         val author = browseRepository.getAuthor(authorId)
             ?: return listOf(
                 buildStateItem(
@@ -258,50 +245,50 @@ internal class ShelfDriveMediaCatalog(
                         group.count,
                     ),
                     extras = childStyleExtras(
-                        playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                        playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
                     ),
                 )
             }
         }
     }
 
-    private fun buildRecentRootItem(): MediaItem {
+    private fun buildRecentRootItem(): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(
             mediaId = BrowseNodeId.Recent.serialize(),
             title = context.getString(R.string.media_root_recent),
             iconUri = drawableUri(R.drawable.ic_menu_recent),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+                playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
 
-    private fun buildBooksRootItem(): MediaItem {
+    private fun buildBooksRootItem(): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(
             mediaId = BrowseNodeId.Books.serialize(),
             title = context.getString(R.string.media_root_books),
             iconUri = drawableUri(R.drawable.ic_menu_books),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+                playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
 
-    private fun buildAuthorsRootItem(): MediaItem {
+    private fun buildAuthorsRootItem(): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(
             mediaId = BrowseNodeId.Authors.serialize(),
             title = context.getString(R.string.media_root_authors),
             iconUri = drawableUri(R.drawable.ic_menu_authors),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
-                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
 
-    private fun buildConnectionProblemItem(mediaId: String): MediaItem {
+    private fun buildConnectionProblemItem(mediaId: String): MediaBrowserCompat.MediaItem {
         return buildStateItem(
             mediaId = mediaId,
             title = context.getString(R.string.media_connection_problem_title),
@@ -310,26 +297,19 @@ internal class ShelfDriveMediaCatalog(
         )
     }
 
-    private fun buildPlayableBookItem(book: BookEntity): MediaItem {
+    private fun buildPlayableBookItem(book: BookEntity): MediaBrowserCompat.MediaItem {
         val subtitle = book.authorDisplay ?: book.subtitle ?: book.description
-        return MediaItem.Builder()
-            .setMediaId(BrowseNodeId.Book(book.id).serialize())
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(book.title)
-                    .setArtist(subtitle)
-                    .setAlbumTitle(book.title)
-                    .setArtworkUri(ArtworkUriFactory.bookCover(book.id, ArtworkUriFactory.signatureFor(book.coverPath)))
-                    .setIsBrowsable(false)
-                    .setIsPlayable(true)
-                    .setDurationMs(book.durationMs)
-                    .setExtras(childStyleExtras())
-                    .build(),
-            )
-            .build()
+        return buildMediaItem(
+            mediaId = BrowseNodeId.Book(book.id).serialize(),
+            title = book.title,
+            subtitle = subtitle,
+            iconUri = ArtworkUriFactory.bookCover(book.id, ArtworkUriFactory.signatureFor(book.coverPath)),
+            extras = childStyleExtras(),
+            flags = MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+        )
     }
 
-    private fun buildAuthorItem(author: AuthorEntity): MediaItem {
+    private fun buildAuthorItem(author: AuthorEntity): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(
             mediaId = BrowseNodeId.Author(author.id).serialize(),
             title = author.name,
@@ -340,8 +320,8 @@ internal class ShelfDriveMediaCatalog(
             ),
             iconUri = ArtworkUriFactory.authorImage(author.id, ArtworkUriFactory.signatureFor(author.imagePath)),
             extras = childStyleExtras(
-                browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
-                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                browsableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_CATEGORY_LIST_ITEM,
+                playableStyle = ShelfDriveCompatConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
             ),
         )
     }
@@ -351,7 +331,7 @@ internal class ShelfDriveMediaCatalog(
         title: String,
         subtitle: String,
         iconUri: Uri? = null,
-    ): MediaItem {
+    ): MediaBrowserCompat.MediaItem {
         return buildBrowsableItem(mediaId, title, subtitle, iconUri)
     }
 
@@ -361,20 +341,35 @@ internal class ShelfDriveMediaCatalog(
         subtitle: String? = null,
         iconUri: Uri? = null,
         extras: Bundle? = null,
-    ): MediaItem {
-        return MediaItem.Builder()
-            .setMediaId(mediaId)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist(subtitle)
-                    .setArtworkUri(iconUri)
-                    .setIsBrowsable(true)
-                    .setIsPlayable(false)
-                    .setExtras(extras ?: childStyleExtras())
-                    .build(),
-            )
-            .build()
+    ): MediaBrowserCompat.MediaItem {
+        return buildMediaItem(
+            mediaId = mediaId,
+            title = title,
+            subtitle = subtitle,
+            iconUri = iconUri,
+            extras = extras ?: childStyleExtras(),
+            flags = MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+        )
+    }
+
+    private fun buildMediaItem(
+        mediaId: String,
+        title: String,
+        subtitle: String? = null,
+        iconUri: Uri? = null,
+        extras: Bundle? = null,
+        flags: Int,
+    ): MediaBrowserCompat.MediaItem {
+        return MediaBrowserCompat.MediaItem(
+            MediaDescriptionCompat.Builder()
+                .setMediaId(mediaId)
+                .setTitle(title)
+                .setSubtitle(subtitle)
+                .setIconUri(iconUri)
+                .setExtras(extras)
+                .build(),
+            flags,
+        )
     }
 
     private fun childStyleExtras(
@@ -383,10 +378,10 @@ internal class ShelfDriveMediaCatalog(
     ): Bundle {
         return Bundle().apply {
             browsableStyle?.let {
-                putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it)
+                putInt(ShelfDriveCompatConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE, it)
             }
             playableStyle?.let {
-                putInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it)
+                putInt(ShelfDriveCompatConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE, it)
             }
         }
     }
