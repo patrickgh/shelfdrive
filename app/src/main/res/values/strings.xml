@@ -35,7 +35,7 @@
     <string name="settings_resync_summary_failed">Update not possible. The last catalog remains available.</string>
     <string name="settings_clear_cache_summary_initial">Calculating storage usage...</string>
     <string name="settings_clear_cache_summary_usage">Currently used: %1$s</string>
-    <string name="settings_clear_cache_summary_scope">Removes catalog data, cover art, and locally cached progress. The login remains saved.</string>
+    <string name="settings_clear_cache_summary_scope">Removes catalog data, cover art, local audio cache, and locally cached progress. The login remains saved.</string>
     <string name="settings_clear_cache_summary_cleared">Last cleared: %1$s</string>
     <string name="settings_diagnostics_title">Diagnostics</string>
     <string name="settings_diagnostics_no_start">No service start recorded yet.</string>

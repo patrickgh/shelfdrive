@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package io.audiobookshelf.aaos.auth
 
 import android.content.Context

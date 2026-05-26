@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.audiobookshelf.aaos.absapi.ApiException
+import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthCommands
@@ -42,6 +43,7 @@ import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.cache.CacheCommands
 import io.audiobookshelf.aaos.cache.CacheRepository
+import io.audiobookshelf.aaos.cache.PlaybackAudioCache
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
@@ -115,7 +117,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         traceMethod("onCreate")
 
         authStorage = AuthStorage(this)
-        authRepository = AuthRepository(storage = authStorage)
+        val apiClient = AudiobookshelfApiClient()
+        authRepository = AuthRepository(storage = authStorage, apiClient = apiClient)
         val database = CatalogDatabase.getInstance(this)
         browseRepository = CatalogBrowseRepository(database)
         mediaCatalog = ShelfDriveMediaCatalog(this, browseRepository)
@@ -125,11 +128,13 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             database = database,
             authRepository = authRepository,
             authStorage = authStorage,
+            apiClient = apiClient,
         )
         progressSyncRepository = ProgressSyncRepository(
             database = database,
             authRepository = authRepository,
             authStorage = authStorage,
+            apiClient = apiClient,
             diagnosticEventLogger = diagnosticEventLogger,
         )
         cacheRepository = CacheRepository(this, database)
@@ -137,6 +142,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             authRepository = authRepository,
             authStorage = authStorage,
             database = database,
+            apiClient = apiClient,
         )
         playbackStateStorage = PlaybackStateStorage(this)
         traceMethod("onCreate:diagnosticsInitialized")
@@ -145,7 +151,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
-                    DefaultDataSource.Factory(this, httpDataSourceFactory),
+                    PlaybackAudioCache.createDataSourceFactory(
+                        this,
+                        DefaultDataSource.Factory(this, httpDataSourceFactory),
+                    ),
                 ),
             )
             .setSeekBackIncrementMs(SEEK_INCREMENT_MS)

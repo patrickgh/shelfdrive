@@ -3,11 +3,19 @@ package io.audiobookshelf.aaos.absapi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.util.concurrent.TimeUnit
 
-class AudiobookshelfHttpClient {
+class AudiobookshelfHttpClient(
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(NetworkPolicy.CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(NetworkPolicy.READ_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .writeTimeout(NetworkPolicy.WRITE_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+        .build()
+) {
 
     suspend fun execute(baseUrl: String, request: HttpRequest): HttpResponse = withContext(Dispatchers.IO) {
         val normalizedBaseUrl = baseUrl.trim().removeSuffix("/")
@@ -17,26 +25,35 @@ class AudiobookshelfHttpClient {
     private suspend fun executeWithRetries(baseUrl: String, request: HttpRequest): HttpResponse {
         val retryDelays = NetworkPolicy.retryDelays(request.retryProfile)
         var attempt = 0
+        val okHttpRequest = buildOkHttpRequest(baseUrl, request)
 
         while (true) {
             try {
-                val connection = openConnection(baseUrl, request)
-                val statusCode = connection.responseCode
-                val response = HttpResponse(
-                    statusCode = statusCode,
-                    body = readBody(connection),
-                    headers = connection.headerFields.entries
-                        .mapNotNull { entry -> entry.key?.let { it to entry.value } }
-                        .toMap(),
-                )
+                val response = client.newCall(okHttpRequest).execute()
+                val statusCode = response.code
+                val responseBody = response.body?.string().orEmpty()
+                val responseHeaders = response.headers.toMultimap()
 
-                if (NetworkPolicy.shouldRetryHttpStatus(statusCode, request.retryProfile) && attempt < retryDelays.size) {
-                    delay(retryDelays[attempt])
-                    attempt += 1
-                    continue
+                val result = response.use {
+                    val httpResponse = HttpResponse(
+                        statusCode = statusCode,
+                        body = responseBody,
+                        headers = responseHeaders,
+                    )
+
+                    if (NetworkPolicy.shouldRetryHttpStatus(statusCode, request.retryProfile) && attempt < retryDelays.size) {
+                        null
+                    } else {
+                        httpResponse
+                    }
                 }
 
-                return response
+                if (result != null) {
+                    return result
+                }
+
+                delay(retryDelays[attempt])
+                attempt += 1
             } catch (exception: IOException) {
                 if (!NetworkPolicy.shouldRetry(exception) || attempt >= retryDelays.size) {
                     throw exception
@@ -47,31 +64,28 @@ class AudiobookshelfHttpClient {
         }
     }
 
-    private fun openConnection(baseUrl: String, request: HttpRequest): HttpURLConnection {
-        val connection = (URL("$baseUrl${request.path}").openConnection() as HttpURLConnection).apply {
-            requestMethod = request.method
-            connectTimeout = NetworkPolicy.CONNECT_TIMEOUT_MS
-            readTimeout = NetworkPolicy.READ_TIMEOUT_MS
-            doInput = true
-            request.headers.forEach { (name, value) ->
-                setRequestProperty(name, value)
-            }
+    private fun buildOkHttpRequest(baseUrl: String, request: HttpRequest): okhttp3.Request {
+        val builder = okhttp3.Request.Builder()
+            .url("$baseUrl${request.path}")
+
+        request.headers.forEach { (name, value) ->
+            builder.addHeader(name, value)
         }
 
         val body = request.body
         if (body != null) {
-            connection.doOutput = true
-            connection.outputStream.bufferedWriter().use { writer ->
-                writer.write(body)
+            val mediaType = request.headers["Content-Type"]?.toMediaTypeOrNull()
+            builder.method(request.method, body.toRequestBody(mediaType))
+        } else {
+            val method = request.method
+            if (method == "POST" || method == "PUT" || method == "PATCH") {
+                builder.method(method, "".toRequestBody(null))
+            } else {
+                builder.method(method, null)
             }
         }
 
-        return connection
-    }
-
-    private fun readBody(connection: HttpURLConnection): String {
-        val stream = connection.errorStream ?: connection.inputStream
-        return stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        return builder.build()
     }
 }
 
