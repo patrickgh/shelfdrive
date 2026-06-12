@@ -37,7 +37,7 @@ ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 > This project was built with substantial AI assistance. It works for my environment/use cases but may fail on other cars. The code, documentation, architecture, and implementation details should be reviewed before production use.
 
 > [!NOTE]
-> The app is currently only available via my internal test track on the Google Play Store. If you accept the alpha stage you can reach out (dsaos9632@gmail.com) and get invited to try it yourself. A public release is not yet planned.
+> The app is currently only available via my closed test track on the Google Play Store. If you accept the BETA stage you can reach out (dsaos9632@gmail.com) and get invited to try it yourself. A public release via Play Store is planned after completion of the test.
 
 ## Screenshots
 
@@ -47,7 +47,7 @@ ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 
 ## Status
 
-ShelfDrive is alpha software for personal testing on Android Automotive OS.
+ShelfDrive is beta software for personal testing on Android Automotive OS.
 
 Current app metadata:
 
