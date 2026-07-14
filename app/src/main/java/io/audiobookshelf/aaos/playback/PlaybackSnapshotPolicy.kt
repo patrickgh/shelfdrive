@@ -53,9 +53,7 @@ object PlaybackSnapshotPolicy {
             artworkUri = item.mediaMetadata.artworkUri,
             durationMs = item.mediaMetadata.durationMs,
             positionMs = 0L,
-            trackIndex = 0,
             playbackSpeed = 1f,
-            wasPlaying = false,
             updatedAt = nowMs,
         )
     }

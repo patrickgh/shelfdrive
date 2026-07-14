@@ -30,19 +30,6 @@ class CatalogSyncRepository(
         database.syncStateDao().get()?.toSnapshot() ?: SyncSnapshot(status = SyncStatus.IDLE)
     }
 
-    suspend fun clearCatalog(): SyncSnapshot = withContext(Dispatchers.IO) {
-        database.withTransaction {
-            database.mediaProgressDao().clearAll()
-            database.bookAuthorCrossRefDao().clearAll()
-            database.bookDao().clearAll()
-            database.authorDao().clearAll()
-            database.libraryDao().clearAll()
-        }
-        val idle = SyncSnapshot(status = SyncStatus.IDLE)
-        persistSyncState(idle)
-        idle
-    }
-
     suspend fun syncNow(): SyncSnapshot = withContext(Dispatchers.IO) {
         val previous = loadSnapshot()
         val runningSnapshot = previous.copy(status = SyncStatus.RUNNING, message = UserVisibleStatus.CATALOG_SYNC_RUNNING)
@@ -170,15 +157,19 @@ class CatalogSyncRepository(
         }
 
         database.withTransaction {
-            database.bookAuthorCrossRefDao().clearAll()
-            database.bookDao().clearAll()
-            database.authorDao().clearAll()
-            database.libraryDao().clearAll()
-
             database.libraryDao().upsertAll(libraryEntities)
-            database.bookDao().upsertAll(books)
             database.authorDao().upsertAll(authorMap.values.sortedBy { it.sortName })
+            database.bookDao().upsertAll(books)
+            database.bookAuthorCrossRefDao().clearAll()
             database.bookAuthorCrossRefDao().upsertAll(crossRefs.toList())
+
+            deleteMissing(database.bookDao().getAllIds(), books.mapTo(hashSetOf()) { it.id }, database.bookDao()::deleteByIds)
+            deleteMissing(database.authorDao().getAllIds(), authorMap.keys, database.authorDao()::deleteByIds)
+            deleteMissing(
+                database.libraryDao().getAllIds(),
+                libraryEntities.mapTo(hashSetOf()) { it.id },
+                database.libraryDao()::deleteByIds,
+            )
         }
 
         val success = SyncSnapshot(
@@ -207,6 +198,14 @@ class CatalogSyncRepository(
                 serverVersion = snapshot.serverVersion,
             ),
         )
+    }
+
+    private suspend fun deleteMissing(
+        existingIds: List<String>,
+        retainedIds: Collection<String>,
+        delete: suspend (List<String>) -> Unit,
+    ) {
+        missingIdChunks(existingIds, retainedIds).forEach { delete(it) }
     }
 
     private fun SyncStateEntity.toSnapshot(): SyncSnapshot {
@@ -254,4 +253,12 @@ class CatalogSyncRepository(
             )
         }
     }
+}
+
+internal fun missingIdChunks(
+    existingIds: List<String>,
+    retainedIds: Collection<String>,
+    chunkSize: Int = 500,
+): List<List<String>> {
+    return existingIds.filterNot(retainedIds::contains).chunked(chunkSize)
 }

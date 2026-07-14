@@ -2,7 +2,7 @@ package io.audiobookshelf.aaos.playback
 
 object PlaybackQueueMath {
     fun locateStartPosition(
-        queue: List<ResolvedPlaybackTrack>,
+        queue: List<PlaybackTrack>,
         requestedPositionMs: Long,
     ): QueueStartPosition {
         if (queue.isEmpty()) {

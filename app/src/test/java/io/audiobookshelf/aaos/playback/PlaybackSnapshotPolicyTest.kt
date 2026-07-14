@@ -24,6 +24,24 @@ class PlaybackSnapshotPolicyTest {
         )
     }
 
+    @Test
+    fun `builds offline playback directly from stored queue`() {
+        val state = storedState(updatedAt = 100_000L).copy(
+            queue = listOf(
+                PlaybackTrack("one", "One", "https://example.com/one.mp3", "audio/mpeg", 60_000L, 0L),
+                PlaybackTrack("two", "Two", "https://example.com/two.mp3", "audio/mpeg", 60_000L, 60_000L),
+            ),
+            positionMs = 75_000L,
+            lastAppliedServerUpdateAt = 42L,
+        )
+
+        val playback = state.toResolvedPlayback()
+
+        assertTrue(playback != null)
+        assertTrue(playback?.startIndex == 1)
+        assertTrue(playback?.startPositionMs == 15_000L)
+    }
+
     private fun storedState(
         title: String? = "Book",
         author: String? = "Author",
@@ -36,9 +54,7 @@ class PlaybackSnapshotPolicyTest {
             author = author,
             durationMs = durationMs,
             positionMs = 42_000L,
-            trackIndex = 1,
             playbackSpeed = 1.25f,
-            wasPlaying = false,
             updatedAt = updatedAt,
         )
     }

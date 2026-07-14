@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.progress
 
 import android.util.Log
 import androidx.room.withTransaction
+import io.audiobookshelf.aaos.absapi.ApiException
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.MediaProgressSummary
 import io.audiobookshelf.aaos.absapi.PlaybackSessionUpdateRequest
@@ -16,6 +17,8 @@ import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -27,10 +30,7 @@ class ProgressSyncRepository(
     private val diagnosticEventLogger: DiagnosticEventLogger? = null,
 ) {
     private val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
-
-    suspend fun clearCache() = withContext(Dispatchers.IO) {
-        database.mediaProgressDao().clearAll()
-    }
+    private val uploadMutex = Mutex()
 
     suspend fun refreshInProgress(): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -39,7 +39,7 @@ class ProgressSyncRepository(
             }
             true
         } catch (exception: AuthenticationRequiredException) {
-            database.mediaProgressDao().clearAll()
+            database.mediaProgressDao().clearUploaded()
             false
         } catch (exception: IOException) {
             Log.w(TAG, "Recent progress refresh failed.", exception)
@@ -50,42 +50,50 @@ class ProgressSyncRepository(
     suspend fun pushProgress(snapshot: PlaybackProgressSnapshot) = withContext(Dispatchers.IO) {
         val localProgress = saveLocalProgress(snapshot)
             ?: return@withContext false
-        val pendingProgress = localProgress.copy(pendingUpload = true)
-        database.mediaProgressDao().upsert(pendingProgress)
-        try {
-            authenticatedRequestRunner.execute { context ->
+        database.mediaProgressDao().upsert(localProgress.copy(pendingUpload = true))
+        uploadMutex.withLock {
+            pushProgressLocked(snapshot, localProgress)
+        }
+    }
+
+    private suspend fun pushProgressLocked(
+        snapshot: PlaybackProgressSnapshot,
+        localProgress: MediaProgressEntity,
+    ): Boolean {
+        if (!isCurrentLocalVersion(localProgress)) {
+            return true
+        }
+        return try {
+            val synced = authenticatedRequestRunner.execute { context ->
                 syncPlaybackSession(snapshot, context)
             }
-            if (snapshot.isFinished) {
-                database.mediaProgressDao().deleteByBookId(snapshot.bookId)
-            } else {
-                database.mediaProgressDao().upsert(localProgress.copy(pendingUpload = false))
+            if (!synced) {
+                recordQueuedProgress(snapshot.bookId, "missing_session_or_duration")
+                return false
             }
+            markUploadedIfCurrent(localProgress)
             true
         } catch (exception: AuthenticationRequiredException) {
-            diagnosticEventLogger?.record(
-                "progress_queued_offline",
-                mapOf("bookId" to snapshot.bookId, "reason" to "authentication_required"),
-            )
+            recordQueuedProgress(snapshot.bookId, "authentication_required")
             false
         } catch (exception: IOException) {
             Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
-            diagnosticEventLogger?.record(
-                "progress_queued_offline",
-                mapOf("bookId" to snapshot.bookId, "reason" to exception.javaClass.simpleName),
-            )
+            recordQueuedProgress(snapshot.bookId, exception.javaClass.simpleName)
             false
         }
     }
 
     suspend fun replayPendingUploads(): Boolean = withContext(Dispatchers.IO) {
+        uploadMutex.withLock {
+            replayPendingUploadsLocked()
+        }
+    }
+
+    private suspend fun replayPendingUploadsLocked(): Boolean {
         val pending = database.mediaProgressDao()
             .getPendingUploads()
-            .groupBy { it.bookId }
-            .mapNotNull { (_, entries) -> entries.maxByOrNull { it.lastUpdateAt } }
-            .sortedBy { it.lastUpdateAt }
         if (pending.isEmpty()) {
-            return@withContext true
+            return true
         }
 
         var allSucceeded = true
@@ -103,7 +111,29 @@ class ProgressSyncRepository(
             }
             allSucceeded = allSucceeded && replayed
         }
-        allSucceeded
+        return allSucceeded
+    }
+
+    internal suspend fun reconcileActivePlayback(
+        bookId: String,
+        currentPositionMs: Long,
+        lastAppliedServerUpdateAt: Long,
+    ): ActiveProgressReconciliation = withContext(Dispatchers.IO) {
+        try {
+            authenticatedRequestRunner.execute { context ->
+                val server = apiClient.getMediaProgress(context.baseUrl, context.accessToken, bookId).toEntity()
+                ProgressConflictPolicy.reconcileActivePlayback(
+                    currentPositionMs = currentPositionMs,
+                    lastAppliedServerUpdateAt = lastAppliedServerUpdateAt,
+                    server = server,
+                )
+            }
+        } catch (_: AuthenticationRequiredException) {
+            ActiveProgressReconciliation.KeepCurrent
+        } catch (exception: IOException) {
+            Log.w(TAG, "Active playback reconciliation failed for $bookId.", exception)
+            ActiveProgressReconciliation.KeepCurrent
+        }
     }
 
     suspend fun applySocketEvent(
@@ -178,7 +208,7 @@ class ProgressSyncRepository(
         val durationMs = snapshot.durationMs ?: existing?.durationMs ?: catalogBook.durationMs?.takeIf { it > 0L }
         val progressFraction = calculateProgressFraction(snapshot.currentTimeMs, durationMs)
 
-        val now = snapshot.lastUpdateAt
+        val now = maxOf(snapshot.lastUpdateAt, existing?.lastUpdateAt?.plus(1L) ?: snapshot.lastUpdateAt)
         val entity = MediaProgressEntity(
             bookId = snapshot.bookId,
             currentTimeMs = snapshot.currentTimeMs,
@@ -191,7 +221,6 @@ class ProgressSyncRepository(
             finishedAt = if (snapshot.isFinished) now else null,
             pendingUpload = false,
         )
-        database.mediaProgressDao().upsert(entity)
         return entity
     }
 
@@ -199,11 +228,20 @@ class ProgressSyncRepository(
         progress: MediaProgressEntity,
         context: AuthenticatedRequestContext,
     ): Boolean {
-        val serverProgress = runCatching {
+        val serverProgress = try {
             apiClient.getMediaProgress(context.baseUrl, context.accessToken, progress.bookId).toEntity()
-        }.getOrNull()
+        } catch (exception: ApiException) {
+            if (exception.statusCode == 404) null else throw exception
+        }
         if (!ProgressConflictPolicy.shouldReplayLocal(progress, serverProgress)) {
-            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
+            if (!isCurrentLocalVersion(progress)) {
+                return true
+            }
+            if (serverProgress?.isFinished == true) {
+                database.mediaProgressDao().deleteByBookId(progress.bookId)
+            } else if (serverProgress != null) {
+                database.mediaProgressDao().upsert(serverProgress.copy(pendingUpload = false))
+            }
             diagnosticEventLogger?.record(
                 "conflict_resolved",
                 mapOf("bookId" to progress.bookId, "winner" to "server", "source" to "replay"),
@@ -220,12 +258,10 @@ class ProgressSyncRepository(
             )
             return false
         }
-        syncPlaybackSession(progress.toSnapshot(sessionId), context)
-        if (progress.isFinished) {
-            database.mediaProgressDao().deleteByBookId(progress.bookId)
-        } else {
-            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
+        if (!syncPlaybackSession(progress.toSnapshot(sessionId), context)) {
+            return false
         }
+        markUploadedIfCurrent(progress)
         diagnosticEventLogger?.record(
             "progress_replayed",
             mapOf("bookId" to progress.bookId, "sessionId" to sessionId),
@@ -279,7 +315,7 @@ class ProgressSyncRepository(
     private suspend fun syncPlaybackSession(
         snapshot: PlaybackProgressSnapshot,
         context: AuthenticatedRequestContext,
-    ) {
+    ): Boolean {
         val sessionId = snapshot.playbackSessionId
         if (sessionId.isNullOrBlank()) {
             diagnosticEventLogger?.record(
@@ -290,7 +326,7 @@ class ProgressSyncRepository(
                     "progressReason" to snapshot.reason.name,
                 ),
             )
-            return
+            return false
         }
         val durationMs = snapshot.durationMs
         if (durationMs == null || durationMs <= 0L) {
@@ -303,7 +339,7 @@ class ProgressSyncRepository(
                     "progressReason" to snapshot.reason.name,
                 ),
             )
-            return
+            return false
         }
         diagnosticEventLogger?.record(
             "playback_session_sync_started",
@@ -338,6 +374,7 @@ class ProgressSyncRepository(
                 sessionUpdate = sessionUpdate,
             )
         }
+        return true
     }
 
     private suspend fun List<MediaProgressEntity>.onlyForKnownBooks(): List<MediaProgressEntity> {
@@ -383,8 +420,32 @@ class ProgressSyncRepository(
             isFinished = isFinished,
             reason = if (isFinished) PlaybackProgressReason.ENDED else PlaybackProgressReason.PERIODIC,
             lastUpdateAt = lastUpdateAt,
-            offlineStarted = true,
         )
+    }
+
+    private fun recordQueuedProgress(bookId: String, reason: String) {
+        diagnosticEventLogger?.record(
+            "progress_queued_offline",
+            mapOf("bookId" to bookId, "reason" to reason),
+        )
+    }
+
+    private suspend fun markUploadedIfCurrent(progress: MediaProgressEntity) {
+        if (!isCurrentLocalVersion(progress)) {
+            return
+        }
+        if (progress.isFinished) {
+            database.mediaProgressDao().deleteByBookId(progress.bookId)
+        } else {
+            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
+        }
+    }
+
+    private suspend fun isCurrentLocalVersion(progress: MediaProgressEntity): Boolean {
+        val current = database.mediaProgressDao().getByBookId(progress.bookId) ?: return false
+        return current.lastUpdateAt == progress.lastUpdateAt &&
+            current.currentTimeMs == progress.currentTimeMs &&
+            current.isFinished == progress.isFinished
     }
 
     companion object {

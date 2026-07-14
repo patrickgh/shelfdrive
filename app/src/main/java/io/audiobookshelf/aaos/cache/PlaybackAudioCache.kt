@@ -33,12 +33,6 @@ object PlaybackAudioCache {
         val durationMs: Long?,
     )
 
-    data class PreCacheResult(
-        val cacheKey: String,
-        val startByte: Long,
-        val requestedBytes: Long,
-    )
-
     fun stableCacheKey(bookId: String, trackId: String): String {
         return "$CACHE_KEY_PREFIX:${bookId.trim()}:${trackId.trim()}"
     }
@@ -60,9 +54,9 @@ object PlaybackAudioCache {
         context: Context,
         upstreamFactory: DataSource.Factory,
         requests: List<PreCacheRequest>,
-    ): List<PreCacheResult> {
+    ) {
         if (requests.isEmpty()) {
-            return emptyList()
+            return
         }
         val activeCache = getCache(context)
         val dataSourceFactory = CacheDataSource.Factory()
@@ -70,7 +64,7 @@ object PlaybackAudioCache {
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
 
-        return requests.map { request ->
+        requests.forEach { request ->
             val startByte = estimateStartByte(activeCache, request)
             val requestedBytes = requestLength(activeCache, request.cacheKey, startByte)
             val dataSpec = DataSpec.Builder()
@@ -85,11 +79,6 @@ object PlaybackAudioCache {
                 null,
                 null,
             ).cache()
-            PreCacheResult(
-                cacheKey = request.cacheKey,
-                startByte = startByte,
-                requestedBytes = requestedBytes,
-            )
         }
     }
 
@@ -100,11 +89,38 @@ object PlaybackAudioCache {
         }
     }
 
+    fun directory(context: Context): File {
+        val appContext = context.applicationContext
+        val preferred = File(appContext.noBackupFilesDir, DIRECTORY_NAME)
+        val legacy = File(appContext.cacheDir, DIRECTORY_NAME)
+        if (!preferred.exists() && legacy.exists() && !legacy.renameTo(preferred)) {
+            return legacy
+        }
+        return preferred
+    }
+
+    fun hasCachedDataAtPosition(
+        context: Context,
+        cacheKey: String,
+        positionMs: Long,
+        durationMs: Long?,
+    ): Boolean {
+        val activeCache = getCache(context)
+        val contentLength = ContentMetadata.getContentLength(activeCache.getContentMetadata(cacheKey))
+        if (contentLength == C.LENGTH_UNSET.toLong() || contentLength <= 0L || durationMs == null || durationMs <= 0L) {
+            return activeCache.getCachedSpans(cacheKey).isNotEmpty()
+        }
+        val ratio = positionMs.coerceIn(0L, durationMs).toDouble() / durationMs.toDouble()
+        val estimatedByte = (contentLength.toDouble() * ratio).roundToLong()
+            .coerceIn(0L, (contentLength - 1L).coerceAtLeast(0L))
+        return activeCache.getCachedLength(cacheKey, estimatedByte, 1L) > 0L
+    }
+
     private fun getCache(context: Context): SimpleCache {
         cache?.let { return it }
         return synchronized(this) {
             cache ?: SimpleCache(
-                File(context.applicationContext.cacheDir, DIRECTORY_NAME),
+                directory(context),
                 LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES),
                 StandaloneDatabaseProvider(context.applicationContext),
             ).also { cache = it }

@@ -4,11 +4,18 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 
 @Dao
 interface LibraryDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAll(libraries: List<LibraryEntity>)
+
+    @Query("SELECT id FROM libraries")
+    suspend fun getAllIds(): List<String>
+
+    @Query("DELETE FROM libraries WHERE id IN (:libraryIds)")
+    suspend fun deleteByIds(libraryIds: List<String>)
 
     @Query("DELETE FROM libraries")
     suspend fun clearAll()
@@ -19,8 +26,14 @@ interface LibraryDao {
 
 @Dao
 interface BookDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAll(books: List<BookEntity>)
+
+    @Query("SELECT id FROM books")
+    suspend fun getAllIds(): List<String>
+
+    @Query("DELETE FROM books WHERE id IN (:bookIds)")
+    suspend fun deleteByIds(bookIds: List<String>)
 
     @Query("DELETE FROM books")
     suspend fun clearAll()
@@ -79,8 +92,14 @@ interface BookDao {
 
 @Dao
 interface AuthorDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Upsert
     suspend fun upsertAll(authors: List<AuthorEntity>)
+
+    @Query("SELECT id FROM authors")
+    suspend fun getAllIds(): List<String>
+
+    @Query("DELETE FROM authors WHERE id IN (:authorIds)")
+    suspend fun deleteByIds(authorIds: List<String>)
 
     @Query("DELETE FROM authors")
     suspend fun clearAll()

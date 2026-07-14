@@ -37,7 +37,7 @@ class CacheRepository(
     private fun buildSnapshot(clearedAt: Long? = null): CacheSnapshot {
         val catalog = databaseFiles().fold(Size.EMPTY) { total, file -> total + file.sizeRecursively() }
         val artwork = File(appContext.cacheDir, ARTWORK_CACHE_DIR).sizeRecursively()
-        val audio = File(appContext.cacheDir, PlaybackAudioCache.DIRECTORY_NAME).sizeRecursively()
+        val audio = PlaybackAudioCache.directory(appContext).sizeRecursively()
         val total = catalog + artwork + audio
         return CacheSnapshot(
             totalBytes = total.bytes,

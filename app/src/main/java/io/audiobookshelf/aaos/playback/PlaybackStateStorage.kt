@@ -24,13 +24,12 @@ class PlaybackStateStorage(context: Context) {
             durationMs = sharedPreferences.getLong(KEY_DURATION_MS, UNKNOWN_DURATION_MS)
                 .takeIf { it >= 0L },
             positionMs = sharedPreferences.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
-            trackIndex = sharedPreferences.getInt(KEY_TRACK_INDEX, 0).coerceAtLeast(0),
             queue = decodeQueue(sharedPreferences.getString(KEY_QUEUE, null)),
             playbackSpeed = sharedPreferences.getFloat(KEY_PLAYBACK_SPEED, 1f)
                 .takeIf { it.isFinite() && it > 0f }
                 ?: 1f,
-            wasPlaying = sharedPreferences.getBoolean(KEY_WAS_PLAYING, false),
             updatedAt = sharedPreferences.getLong(KEY_UPDATED_AT, 0L),
+            lastAppliedServerUpdateAt = sharedPreferences.getLong(KEY_LAST_APPLIED_SERVER_UPDATE_AT, 0L),
         )
     }
 
@@ -42,11 +41,10 @@ class PlaybackStateStorage(context: Context) {
             .putString(KEY_ARTWORK_URI, state.artworkUri?.toString())
             .putLong(KEY_DURATION_MS, state.durationMs ?: UNKNOWN_DURATION_MS)
             .putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
-            .putInt(KEY_TRACK_INDEX, state.trackIndex.coerceAtLeast(0))
             .putString(KEY_QUEUE, encodeQueue(state.queue))
             .putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
-            .putBoolean(KEY_WAS_PLAYING, state.wasPlaying)
             .putLong(KEY_UPDATED_AT, state.updatedAt)
+            .putLong(KEY_LAST_APPLIED_SERVER_UPDATE_AT, state.lastAppliedServerUpdateAt)
             .apply()
     }
 
@@ -54,7 +52,7 @@ class PlaybackStateStorage(context: Context) {
         sharedPreferences.edit().clear().apply()
     }
 
-    private fun encodeQueue(queue: List<StoredPlaybackTrack>): String? {
+    private fun encodeQueue(queue: List<PlaybackTrack>): String? {
         if (queue.isEmpty()) {
             return null
         }
@@ -73,7 +71,7 @@ class PlaybackStateStorage(context: Context) {
         return array.toString()
     }
 
-    private fun decodeQueue(raw: String?): List<StoredPlaybackTrack> {
+    private fun decodeQueue(raw: String?): List<PlaybackTrack> {
         if (raw.isNullOrBlank()) {
             return emptyList()
         }
@@ -85,7 +83,7 @@ class PlaybackStateStorage(context: Context) {
                     val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
                     val contentUrl = item.optString("contentUrl").takeIf { it.isNotBlank() } ?: continue
                     add(
-                        StoredPlaybackTrack(
+                        PlaybackTrack(
                             id = id,
                             title = item.optString("title").takeIf { it.isNotBlank() } ?: "Hoerbuch ${index + 1}",
                             contentUrl = contentUrl,
@@ -114,11 +112,10 @@ class PlaybackStateStorage(context: Context) {
         private const val KEY_ARTWORK_URI = "artwork_uri"
         private const val KEY_DURATION_MS = "duration_ms"
         private const val KEY_POSITION_MS = "position_ms"
-        private const val KEY_TRACK_INDEX = "track_index"
         private const val KEY_QUEUE = "queue"
         private const val KEY_PLAYBACK_SPEED = "playback_speed"
-        private const val KEY_WAS_PLAYING = "was_playing"
         private const val KEY_UPDATED_AT = "updated_at"
+        private const val KEY_LAST_APPLIED_SERVER_UPDATE_AT = "last_applied_server_update_at"
         private const val UNKNOWN_DURATION_MS = -1L
     }
 }
@@ -130,18 +127,8 @@ data class StoredPlaybackState(
     val artworkUri: Uri? = null,
     val durationMs: Long? = null,
     val positionMs: Long,
-    val trackIndex: Int = 0,
-    val queue: List<StoredPlaybackTrack> = emptyList(),
+    val queue: List<PlaybackTrack> = emptyList(),
     val playbackSpeed: Float,
-    val wasPlaying: Boolean,
     val updatedAt: Long,
-)
-
-data class StoredPlaybackTrack(
-    val id: String,
-    val title: String,
-    val contentUrl: String,
-    val mimeType: String?,
-    val durationMs: Long?,
-    val startOffsetMs: Long,
+    val lastAppliedServerUpdateAt: Long = 0L,
 )

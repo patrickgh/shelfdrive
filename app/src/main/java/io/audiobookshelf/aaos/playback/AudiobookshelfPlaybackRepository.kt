@@ -55,7 +55,7 @@ class AudiobookshelfPlaybackRepository(
                 ),
             )
             .mapIndexed { index, track ->
-                ResolvedPlaybackTrack(
+                PlaybackTrack(
                     id = track.id.ifBlank { "track-$index" },
                     title = track.title?.takeIf { it.isNotBlank() }
                         ?: inferTrackTitle(catalogBook, index, playbackSession.audioTracks.size),
@@ -85,7 +85,6 @@ class AudiobookshelfPlaybackRepository(
                 author = playbackSession.displayAuthor
                     ?: catalogBook?.authorDisplay
                     ?: playbackSession.author,
-                coverPath = playbackSession.coverPath ?: catalogBook?.coverPath,
                 artworkUri = ArtworkUriFactory.bookCover(
                     bookId,
                     ArtworkUriFactory.signatureFor(playbackSession.coverPath ?: catalogBook?.coverPath),
@@ -126,7 +125,7 @@ class AudiobookshelfPlaybackRepository(
         return builder.build().toString()
     }
 
-    private fun List<ResolvedPlaybackTrack>.sumOfKnownDurations(): Long? {
+    private fun List<PlaybackTrack>.sumOfKnownDurations(): Long? {
         return if (any { it.durationMs == null }) {
             null
         } else {

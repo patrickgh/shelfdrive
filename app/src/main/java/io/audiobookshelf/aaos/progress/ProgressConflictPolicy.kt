@@ -5,6 +5,7 @@ import kotlin.math.abs
 
 internal object ProgressConflictPolicy {
     const val POSITION_CONFLICT_THRESHOLD_MS = 10_000L
+    const val FORWARD_SEEK_THRESHOLD_MS = 30_000L
     const val TIMESTAMP_TOLERANCE_MS = 2_000L
 
     fun resolve(
@@ -29,8 +30,54 @@ internal object ProgressConflictPolicy {
     }
 
     fun shouldReplayLocal(local: MediaProgressEntity, server: MediaProgressEntity?): Boolean {
-        return server == null || local.lastUpdateAt > server.lastUpdateAt + TIMESTAMP_TOLERANCE_MS
+        if (server == null) {
+            return true
+        }
+        if (server.isFinished) {
+            return false
+        }
+        if (server.currentTimeMs >= local.currentTimeMs + FORWARD_SEEK_THRESHOLD_MS) {
+            return false
+        }
+        if (local.currentTimeMs >= server.currentTimeMs + FORWARD_SEEK_THRESHOLD_MS) {
+            return true
+        }
+        return local.lastUpdateAt > server.lastUpdateAt + TIMESTAMP_TOLERANCE_MS
     }
+
+    fun reconcileActivePlayback(
+        currentPositionMs: Long,
+        lastAppliedServerUpdateAt: Long,
+        server: MediaProgressEntity,
+    ): ActiveProgressReconciliation {
+        val serverPositionMs = if (server.isFinished) {
+            server.durationMs?.takeIf { it > 0L } ?: server.currentTimeMs
+        } else {
+            server.currentTimeMs
+        }
+        if (
+            server.lastUpdateAt <= lastAppliedServerUpdateAt ||
+            serverPositionMs < currentPositionMs + FORWARD_SEEK_THRESHOLD_MS
+        ) {
+            return ActiveProgressReconciliation.KeepCurrent
+        }
+        val targetPositionMs = server.durationMs
+            ?.takeIf { it > 0L }
+            ?.let(serverPositionMs::coerceAtMost)
+            ?: serverPositionMs
+        return ActiveProgressReconciliation.SeekForwardOnce(
+            positionMs = targetPositionMs,
+            serverUpdateAt = server.lastUpdateAt,
+        )
+    }
+}
+
+internal sealed interface ActiveProgressReconciliation {
+    data object KeepCurrent : ActiveProgressReconciliation
+    data class SeekForwardOnce(
+        val positionMs: Long,
+        val serverUpdateAt: Long,
+    ) : ActiveProgressReconciliation
 }
 
 internal sealed interface ProgressConflictResolution {

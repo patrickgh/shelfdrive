@@ -25,22 +25,21 @@ class ConnectivityMonitor(
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
     private var hasNetwork = currentNetworkAvailable()
 
+    private val _networkAvailable = MutableStateFlow(hasNetwork)
+    val networkAvailable: StateFlow<Boolean> = _networkAvailable
     private val _quality = MutableStateFlow(calculateQuality())
     val quality: StateFlow<LinkQuality> = _quality
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            hasNetwork = true
             publish()
         }
 
         override fun onLost(network: Network) {
-            hasNetwork = currentNetworkAvailable()
             publish()
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-            hasNetwork = networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             publish()
         }
     }
@@ -61,6 +60,8 @@ class ConnectivityMonitor(
     }
 
     private fun publish() {
+        hasNetwork = currentNetworkAvailable()
+        _networkAvailable.value = hasNetwork
         _quality.value = calculateQuality()
     }
 

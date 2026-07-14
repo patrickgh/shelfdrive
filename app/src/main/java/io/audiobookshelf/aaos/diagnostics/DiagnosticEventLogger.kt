@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
+import java.util.concurrent.Executors
 
 class DiagnosticEventLogger(context: Context) {
     private val directory = File(context.applicationContext.filesDir, DIRECTORY_NAME)
@@ -11,18 +12,23 @@ class DiagnosticEventLogger(context: Context) {
     private var lastPrunedAt = 0L
 
     fun record(event: String, details: Map<String, String?> = emptyMap()) {
-        runCatching {
-            directory.mkdirs()
-            pruneExpiredLogsIfDue()
-            rotateIfNeeded()
-            val payload = JSONObject().apply {
-                put("timestamp", System.currentTimeMillis())
-                put("event", event)
-                details
-                    .filterValues { !it.isNullOrBlank() }
-                    .forEach { (key, value) -> put(key, value) }
+        val recordedDetails = details.toMap()
+        writer.execute {
+            synchronized(fileLock) {
+                runCatching {
+                    directory.mkdirs()
+                    pruneExpiredLogsIfDue()
+                    rotateIfNeeded()
+                    val payload = JSONObject().apply {
+                        put("timestamp", System.currentTimeMillis())
+                        put("event", event)
+                        recordedDetails
+                            .filterValues { !it.isNullOrBlank() }
+                            .forEach { (key, value) -> put(key, value) }
+                    }
+                    logFile.appendText(payload.toString() + "\n")
+                }
             }
-            logFile.appendText(payload.toString() + "\n")
         }
     }
 
@@ -35,15 +41,17 @@ class DiagnosticEventLogger(context: Context) {
     }
 
     private fun readRecentText(file: File): String {
-        return try {
-            if (file.isFile) {
-                filterRecentLines(file.readLines()).joinToString(separator = "\n", postfix = "\n").takeIf { it.isNotBlank() }
-                    ?: ""
-            } else {
+        return synchronized(fileLock) {
+            try {
+                if (file.isFile) {
+                    filterRecentLines(file.readLines()).joinToString(separator = "\n", postfix = "\n").takeIf { it.isNotBlank() }
+                        ?: ""
+                } else {
+                    ""
+                }
+            } catch (_: IOException) {
                 ""
             }
-        } catch (_: IOException) {
-            ""
         }
     }
 
@@ -94,6 +102,10 @@ class DiagnosticEventLogger(context: Context) {
     }
 
     companion object {
+        private val writer = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "shelfdrive-diagnostics").apply { isDaemon = true }
+        }
+        private val fileLock = Any()
         private const val DIRECTORY_NAME = "diagnostics"
         private const val LOG_FILE_NAME = "events.log"
         private const val BACKUP_LOG_FILE_NAME = "events.previous.log"

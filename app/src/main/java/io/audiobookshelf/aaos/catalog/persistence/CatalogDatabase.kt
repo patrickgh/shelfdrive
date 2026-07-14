@@ -39,7 +39,7 @@ abstract class CatalogDatabase : RoomDatabase() {
                     "catalog.db",
                 )
                     .addMigrations(MIGRATION_2_3)
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .fallbackToDestructiveMigrationFrom(true, 1)
                     .build()
                     .also { instance = it }
             }

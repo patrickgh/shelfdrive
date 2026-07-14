@@ -52,20 +52,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         configureEditablePreferences()
         configurePlaybackPreferences()
         configureActions()
-        renderState(
-            commandChannelReady = (activity as? SettingsActivity)?.isCommandChannelReady() == true,
-            authSnapshot = (activity as? SettingsActivity)?.currentAuthSnapshot()
-                ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
-            syncSnapshot = (activity as? SettingsActivity)?.currentSyncSnapshot()
-                ?: SyncSnapshot(status = SyncStatus.IDLE),
-            cacheSnapshot = (activity as? SettingsActivity)?.currentCacheSnapshot()
-                ?: CacheSnapshot(),
-            diagnosticsSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsSnapshot()
-                ?: StartupDiagnosticsSnapshot(),
-            diagnosticsUploadSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()
-                ?: DiagnosticsUploadSnapshot(),
-            loginInProgress = (activity as? SettingsActivity)?.isLoginInProgress() == true,
-        )
+        renderActivityState()
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -84,20 +71,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     override fun onResume() {
         super.onResume()
-        renderState(
-            commandChannelReady = (activity as? SettingsActivity)?.isCommandChannelReady() == true,
-            authSnapshot = (activity as? SettingsActivity)?.currentAuthSnapshot()
-                ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
-            syncSnapshot = (activity as? SettingsActivity)?.currentSyncSnapshot()
-                ?: SyncSnapshot(status = SyncStatus.IDLE),
-            cacheSnapshot = (activity as? SettingsActivity)?.currentCacheSnapshot()
-                ?: CacheSnapshot(),
-            diagnosticsSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsSnapshot()
-                ?: StartupDiagnosticsSnapshot(),
-            diagnosticsUploadSnapshot = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()
-                ?: DiagnosticsUploadSnapshot(),
-            loginInProgress = (activity as? SettingsActivity)?.isLoginInProgress() == true,
-        )
+        renderActivityState()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -142,6 +116,19 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         renderFieldState()
         renderActionAvailability()
+    }
+
+    private fun renderActivityState() {
+        val host = activity as? SettingsActivity
+        renderState(
+            commandChannelReady = host?.isCommandChannelReady() == true,
+            authSnapshot = host?.currentAuthSnapshot() ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
+            syncSnapshot = host?.currentSyncSnapshot() ?: SyncSnapshot(status = SyncStatus.IDLE),
+            cacheSnapshot = host?.currentCacheSnapshot() ?: CacheSnapshot(),
+            diagnosticsSnapshot = host?.currentDiagnosticsSnapshot() ?: StartupDiagnosticsSnapshot(),
+            diagnosticsUploadSnapshot = host?.currentDiagnosticsUploadSnapshot() ?: DiagnosticsUploadSnapshot(),
+            loginInProgress = host?.isLoginInProgress() == true,
+        )
     }
 
     private fun restoreDrafts(savedInstanceState: Bundle?) {

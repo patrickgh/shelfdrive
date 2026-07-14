@@ -53,7 +53,7 @@ class ProgressConflictPolicyTest {
 
     @Test
     fun `replays local only when it is newer than server beyond tolerance`() {
-        val local = progress(currentTimeMs = 40_000L, lastUpdateAt = 5_500L)
+        val local = progress(currentTimeMs = 20_000L, lastUpdateAt = 5_500L)
 
         assertTrue(
             ProgressConflictPolicy.shouldReplayLocal(
@@ -69,15 +69,78 @@ class ProgressConflictPolicyTest {
         )
     }
 
+    @Test
+    fun `server position clearly ahead wins replay despite older timestamp`() {
+        val local = progress(currentTimeMs = 20_000L, lastUpdateAt = 8_000L)
+        val server = progress(currentTimeMs = 80_000L, lastUpdateAt = 4_000L)
+
+        assertFalse(ProgressConflictPolicy.shouldReplayLocal(local, server))
+    }
+
+    @Test
+    fun `active playback seeks forward once for a new server update`() {
+        val server = progress(currentTimeMs = 80_000L, lastUpdateAt = 5_000L)
+
+        val first = ProgressConflictPolicy.reconcileActivePlayback(
+            currentPositionMs = 20_000L,
+            lastAppliedServerUpdateAt = 0L,
+            server = server,
+        )
+        val repeated = ProgressConflictPolicy.reconcileActivePlayback(
+            currentPositionMs = 20_000L,
+            lastAppliedServerUpdateAt = 5_000L,
+            server = server,
+        )
+
+        assertTrue(first is ActiveProgressReconciliation.SeekForwardOnce)
+        assertTrue(repeated is ActiveProgressReconciliation.KeepCurrent)
+    }
+
+    @Test
+    fun `active playback never seeks backward or for a small difference`() {
+        val behind = progress(currentTimeMs = 10_000L, lastUpdateAt = 5_000L)
+        val slightlyAhead = progress(currentTimeMs = 45_000L, lastUpdateAt = 6_000L)
+
+        assertTrue(
+            ProgressConflictPolicy.reconcileActivePlayback(50_000L, 0L, behind) is
+                ActiveProgressReconciliation.KeepCurrent,
+        )
+        assertTrue(
+            ProgressConflictPolicy.reconcileActivePlayback(20_000L, 0L, slightlyAhead) is
+                ActiveProgressReconciliation.KeepCurrent,
+        )
+    }
+
+    @Test
+    fun `finished server progress seeks to the known duration`() {
+        val server = progress(
+            currentTimeMs = 0L,
+            lastUpdateAt = 5_000L,
+            isFinished = true,
+        )
+
+        val reconciliation = ProgressConflictPolicy.reconcileActivePlayback(
+            currentPositionMs = 20_000L,
+            lastAppliedServerUpdateAt = 0L,
+            server = server,
+        )
+
+        assertTrue(
+            reconciliation is ActiveProgressReconciliation.SeekForwardOnce &&
+                reconciliation.positionMs == 100_000L,
+        )
+    }
+
     private fun progress(
         currentTimeMs: Long,
         lastUpdateAt: Long,
+        isFinished: Boolean = false,
     ) = MediaProgressEntity(
         bookId = "book",
         currentTimeMs = currentTimeMs,
         durationMs = 100_000L,
         progressFraction = currentTimeMs / 100_000.0,
-        isFinished = false,
+        isFinished = isFinished,
         hideFromContinueListening = false,
         lastUpdateAt = lastUpdateAt,
         startedAt = 500L,

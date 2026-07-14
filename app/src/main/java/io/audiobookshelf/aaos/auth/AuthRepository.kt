@@ -168,88 +168,27 @@ class AuthRepository(
         baseUrl: String,
         username: String,
     ): AuthSnapshot {
-        val refreshToken = stored.refreshToken
-        if (!refreshToken.isNullOrBlank()) {
-            try {
-                val session = apiClient.refreshAccessToken(baseUrl, refreshToken, username)
-                if (!session.isSupported) {
-                    storage.save(
-                        stored.copy(
-                            baseUrl = baseUrl,
-                            username = session.username,
-                            accessToken = null,
-                            refreshToken = null,
-                        ),
-                    )
-                    return AuthSnapshot(
-                        status = AuthStatus.SESSION_EXPIRED,
-                        baseUrl = baseUrl,
-                        username = session.username,
-                        serverVersion = session.serverVersion,
-                        statusMessage = session.compatibilityWarning,
-                        hasStoredPassword = !stored.password.isNullOrBlank(),
-                    )
-                }
-
-                val accessToken = session.accessToken
-                if (accessToken.isNullOrBlank()) {
-                    storage.save(
-                        stored.copy(
-                            baseUrl = baseUrl,
-                            username = session.username,
-                            accessToken = null,
-                            refreshToken = null,
-                        ),
-                    )
-                    return AuthSnapshot(
-                        status = AuthStatus.SESSION_EXPIRED,
-                        baseUrl = baseUrl,
-                        username = session.username,
-                        serverVersion = session.serverVersion,
-                        statusMessage = "Refresh-Antwort enthaelt kein Zugriffstoken.",
-                        hasStoredPassword = !stored.password.isNullOrBlank(),
-                    )
-                }
-
-                storage.save(
-                    stored.copy(
-                        baseUrl = baseUrl,
-                        username = session.username,
-                        accessToken = accessToken,
-                        refreshToken = session.refreshToken ?: refreshToken,
-                    ),
-                )
-                return buildAuthenticatedSnapshot(
-                    baseUrl = baseUrl,
-                    username = session.username,
-                    session = session,
-                    hasStoredPassword = !stored.password.isNullOrBlank(),
-                )
-            } catch (exception: ApiException) {
-                if (exception.statusCode == 401 || exception.statusCode == 403) {
-                    return silentReauthenticate(stored, baseUrl, username)
-                }
+        val refreshToken = stored.refreshToken?.takeIf { it.isNotBlank() }
+            ?: return silentReauthenticate(stored, baseUrl, username)
+        return try {
+            recoveredSessionSnapshot(
+                stored = stored,
+                baseUrl = baseUrl,
+                session = apiClient.refreshAccessToken(baseUrl, refreshToken, username),
+                password = stored.password,
+                fallbackRefreshToken = refreshToken,
+            )
+        } catch (exception: ApiException) {
+            if (exception.statusCode == 401 || exception.statusCode == 403) {
+                silentReauthenticate(stored, baseUrl, username)
+            } else {
                 Log.w(TAG, "Token refresh failed with API error ${exception.statusCode}.", exception)
-                return AuthSnapshot(
-                    status = AuthStatus.AUTHENTICATED,
-                    baseUrl = baseUrl,
-                    username = username,
-                    statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                    hasStoredPassword = !stored.password.isNullOrBlank(),
-                )
-            } catch (exception: IOException) {
-                Log.w(TAG, "Token refresh failed due to IO error. Keeping cached session alive.", exception)
-                return AuthSnapshot(
-                    status = AuthStatus.AUTHENTICATED,
-                    baseUrl = baseUrl,
-                    username = username,
-                    statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                    hasStoredPassword = !stored.password.isNullOrBlank(),
-                )
+                offlineSnapshot(stored, baseUrl, username)
             }
+        } catch (exception: IOException) {
+            Log.w(TAG, "Token refresh failed due to IO error. Keeping cached session alive.", exception)
+            offlineSnapshot(stored, baseUrl, username)
         }
-
-        return silentReauthenticate(stored, baseUrl, username)
     }
 
     private suspend fun silentReauthenticate(
@@ -259,112 +198,96 @@ class AuthRepository(
     ): AuthSnapshot {
         val password = stored.password
         if (password.isNullOrBlank()) {
-            storage.save(
-                stored.copy(
-                    baseUrl = baseUrl,
-                    username = username,
-                    accessToken = null,
-                    refreshToken = null,
-                ),
-            )
-            return AuthSnapshot(
-                status = AuthStatus.SESSION_EXPIRED,
-                baseUrl = baseUrl,
-                username = username,
-            )
+            return expiredSnapshot(stored, baseUrl, username)
         }
 
         return try {
-            val session = apiClient.login(baseUrl, username, password)
-            if (!session.isSupported) {
-                storage.save(
-                    stored.copy(
-                        baseUrl = baseUrl,
-                        username = session.username,
-                        accessToken = null,
-                        refreshToken = null,
-                    ),
-                )
-                return AuthSnapshot(
-                    status = AuthStatus.SESSION_EXPIRED,
-                    baseUrl = baseUrl,
-                    username = session.username,
-                    serverVersion = session.serverVersion,
-                    statusMessage = session.compatibilityWarning,
-                    hasStoredPassword = true,
-                )
-            }
-
-            val accessToken = session.accessToken
-            if (accessToken.isNullOrBlank()) {
-                storage.save(
-                    stored.copy(
-                        baseUrl = baseUrl,
-                        username = session.username,
-                        accessToken = null,
-                        refreshToken = null,
-                    ),
-                )
-                return AuthSnapshot(
-                    status = AuthStatus.SESSION_EXPIRED,
-                    baseUrl = baseUrl,
-                    username = session.username,
-                    serverVersion = session.serverVersion,
-                    statusMessage = UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
-                    hasStoredPassword = true,
-                )
-            }
-
-            storage.save(
-                StoredAuthState(
-                    baseUrl = baseUrl,
-                    username = session.username,
-                    password = password,
-                    accessToken = accessToken,
-                    refreshToken = session.refreshToken ?: stored.refreshToken,
-                ),
-            )
-            buildAuthenticatedSnapshot(
+            recoveredSessionSnapshot(
+                stored = stored,
                 baseUrl = baseUrl,
-                username = session.username,
-                session = session,
-                hasStoredPassword = true,
+                session = apiClient.login(baseUrl, username, password),
+                password = password,
+                fallbackRefreshToken = stored.refreshToken,
             )
         } catch (exception: ApiException) {
             if (exception.statusCode == 401) {
-                storage.save(
-                    stored.copy(
-                        baseUrl = baseUrl,
-                        username = username,
-                        accessToken = null,
-                        refreshToken = null,
-                    ),
-                )
-                return AuthSnapshot(
-                    status = AuthStatus.SESSION_EXPIRED,
-                    baseUrl = baseUrl,
-                    username = username,
-                    hasStoredPassword = true,
-                )
+                return expiredSnapshot(stored, baseUrl, username)
             }
             Log.w(TAG, "Silent re-authentication failed with API error ${exception.statusCode}. Keeping cached session alive.", exception)
-            AuthSnapshot(
-                status = AuthStatus.AUTHENTICATED,
-                baseUrl = baseUrl,
-                username = username,
-                statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                hasStoredPassword = true,
-            )
+            offlineSnapshot(stored, baseUrl, username)
         } catch (exception: IOException) {
             Log.w(TAG, "Silent re-authentication failed due to IO error. Keeping cached session alive.", exception)
-            AuthSnapshot(
-                status = AuthStatus.AUTHENTICATED,
-                baseUrl = baseUrl,
-                username = username,
-                statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                hasStoredPassword = true,
+            offlineSnapshot(stored, baseUrl, username)
+        }
+    }
+
+    private fun recoveredSessionSnapshot(
+        stored: StoredAuthState,
+        baseUrl: String,
+        session: AuthenticatedSession,
+        password: String?,
+        fallbackRefreshToken: String?,
+    ): AuthSnapshot {
+        if (!session.isSupported) {
+            return expiredSnapshot(
+                stored,
+                baseUrl,
+                session.username,
+                session.serverVersion,
+                session.compatibilityWarning,
             )
         }
+        val accessToken = session.accessToken?.takeIf { it.isNotBlank() }
+            ?: return expiredSnapshot(
+                stored,
+                baseUrl,
+                session.username,
+                session.serverVersion,
+                UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
+            )
+        storage.save(
+            StoredAuthState(
+                baseUrl = baseUrl,
+                username = session.username,
+                password = password,
+                accessToken = accessToken,
+                refreshToken = session.refreshToken ?: fallbackRefreshToken,
+            ),
+        )
+        return buildAuthenticatedSnapshot(
+            baseUrl,
+            session.username,
+            session,
+            hasStoredPassword = !password.isNullOrBlank(),
+        )
+    }
+
+    private fun expiredSnapshot(
+        stored: StoredAuthState,
+        baseUrl: String,
+        username: String,
+        serverVersion: String? = null,
+        message: String? = null,
+    ): AuthSnapshot {
+        storage.save(stored.copy(baseUrl = baseUrl, username = username, accessToken = null, refreshToken = null))
+        return AuthSnapshot(
+            status = AuthStatus.SESSION_EXPIRED,
+            baseUrl = baseUrl,
+            username = username,
+            serverVersion = serverVersion,
+            statusMessage = message,
+            hasStoredPassword = !stored.password.isNullOrBlank(),
+        )
+    }
+
+    private fun offlineSnapshot(stored: StoredAuthState, baseUrl: String, username: String): AuthSnapshot {
+        return AuthSnapshot(
+            status = AuthStatus.AUTHENTICATED,
+            baseUrl = baseUrl,
+            username = username,
+            statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
+            hasStoredPassword = !stored.password.isNullOrBlank(),
+        )
     }
 
     private fun buildAuthenticatedSnapshot(
