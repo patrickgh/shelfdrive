@@ -20,8 +20,8 @@ android {
         applicationId = "io.shelfdrive.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 20
-        versionName = "0.5.0"
+        versionCode = 22
+        versionName = "0.5.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -87,6 +87,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.material)
     implementation(libs.okhttp)
+    implementation("io.socket:socket.io-client:2.1.0") {
+        exclude(group = "org.json", module = "json")
+    }
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

@@ -5,6 +5,7 @@ import androidx.room.withTransaction
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.MediaProgressSummary
 import io.audiobookshelf.aaos.absapi.PlaybackSessionUpdateRequest
+import io.audiobookshelf.aaos.absapi.socket.AbsSocketEvent
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestContext
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
@@ -13,6 +14,7 @@ import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -48,6 +50,8 @@ class ProgressSyncRepository(
     suspend fun pushProgress(snapshot: PlaybackProgressSnapshot) = withContext(Dispatchers.IO) {
         val localProgress = saveLocalProgress(snapshot)
             ?: return@withContext false
+        val pendingProgress = localProgress.copy(pendingUpload = true)
+        database.mediaProgressDao().upsert(pendingProgress)
         try {
             authenticatedRequestRunner.execute { context ->
                 syncPlaybackSession(snapshot, context)
@@ -55,14 +59,76 @@ class ProgressSyncRepository(
             if (snapshot.isFinished) {
                 database.mediaProgressDao().deleteByBookId(snapshot.bookId)
             } else {
-                database.mediaProgressDao().upsert(localProgress)
+                database.mediaProgressDao().upsert(localProgress.copy(pendingUpload = false))
             }
             true
         } catch (exception: AuthenticationRequiredException) {
+            diagnosticEventLogger?.record(
+                "progress_queued_offline",
+                mapOf("bookId" to snapshot.bookId, "reason" to "authentication_required"),
+            )
             false
         } catch (exception: IOException) {
             Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
+            diagnosticEventLogger?.record(
+                "progress_queued_offline",
+                mapOf("bookId" to snapshot.bookId, "reason" to exception.javaClass.simpleName),
+            )
             false
+        }
+    }
+
+    suspend fun replayPendingUploads(): Boolean = withContext(Dispatchers.IO) {
+        val pending = database.mediaProgressDao()
+            .getPendingUploads()
+            .groupBy { it.bookId }
+            .mapNotNull { (_, entries) -> entries.maxByOrNull { it.lastUpdateAt } }
+            .sortedBy { it.lastUpdateAt }
+        if (pending.isEmpty()) {
+            return@withContext true
+        }
+
+        var allSucceeded = true
+        pending.forEach { progress ->
+            val replayed = runCatching {
+                authenticatedRequestRunner.execute { context ->
+                    replayPendingUpload(progress, context)
+                }
+            }.getOrElse { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                Log.w(TAG, "Pending progress replay failed for ${progress.bookId}.", exception)
+                false
+            }
+            allSucceeded = allSucceeded && replayed
+        }
+        allSucceeded
+    }
+
+    suspend fun applySocketEvent(
+        event: AbsSocketEvent,
+        activeBookId: String?,
+    ): Boolean = withContext(Dispatchers.IO) {
+        when (event) {
+            is AbsSocketEvent.UserUpdated -> {
+                var changed = false
+                event.progressEntries.forEach { server ->
+                    changed = applyServerProgress(server, activeBookId) || changed
+                }
+                changed
+            }
+
+            is AbsSocketEvent.ProgressUpdated -> applyServerProgress(event.progress, activeBookId)
+            is AbsSocketEvent.ItemUpdated,
+            is AbsSocketEvent.ItemRemoved,
+            -> {
+                diagnosticEventLogger?.record(
+                    "socket_catalog_event_received",
+                    mapOf("event" to event::class.java.simpleName),
+                )
+                false
+            }
         }
     }
 
@@ -86,9 +152,18 @@ class ProgressSyncRepository(
 
         val knownProgressEntries = progressEntries.onlyForKnownBooks()
         database.withTransaction {
-            database.mediaProgressDao().clearAll()
+            database.mediaProgressDao().clearUploaded()
             if (knownProgressEntries.isNotEmpty()) {
-                database.mediaProgressDao().upsertAll(knownProgressEntries)
+                val merged = knownProgressEntries.filter { server ->
+                    val local = database.mediaProgressDao().getByBookId(server.bookId)
+                    val resolution = ProgressConflictPolicy.resolve(
+                        local = local,
+                        server = server,
+                        isActivePlaybackForItem = false,
+                    )
+                    resolution is ProgressConflictResolution.ApplyServer || local == null
+                }
+                database.mediaProgressDao().upsertAll(merged)
             }
         }
     }
@@ -103,7 +178,7 @@ class ProgressSyncRepository(
         val durationMs = snapshot.durationMs ?: existing?.durationMs ?: catalogBook.durationMs?.takeIf { it > 0L }
         val progressFraction = calculateProgressFraction(snapshot.currentTimeMs, durationMs)
 
-        val now = System.currentTimeMillis()
+        val now = snapshot.lastUpdateAt
         val entity = MediaProgressEntity(
             bookId = snapshot.bookId,
             currentTimeMs = snapshot.currentTimeMs,
@@ -118,6 +193,87 @@ class ProgressSyncRepository(
         )
         database.mediaProgressDao().upsert(entity)
         return entity
+    }
+
+    private suspend fun replayPendingUpload(
+        progress: MediaProgressEntity,
+        context: AuthenticatedRequestContext,
+    ): Boolean {
+        val serverProgress = runCatching {
+            apiClient.getMediaProgress(context.baseUrl, context.accessToken, progress.bookId).toEntity()
+        }.getOrNull()
+        if (!ProgressConflictPolicy.shouldReplayLocal(progress, serverProgress)) {
+            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
+            diagnosticEventLogger?.record(
+                "conflict_resolved",
+                mapOf("bookId" to progress.bookId, "winner" to "server", "source" to "replay"),
+            )
+            return true
+        }
+
+        val session = apiClient.createPlaybackSession(context.baseUrl, context.accessToken, progress.bookId)
+        val sessionId = session.sessionId
+        if (sessionId.isNullOrBlank()) {
+            diagnosticEventLogger?.record(
+                "progress_replay_skipped",
+                mapOf("bookId" to progress.bookId, "reason" to "missing_session_id"),
+            )
+            return false
+        }
+        syncPlaybackSession(progress.toSnapshot(sessionId), context)
+        if (progress.isFinished) {
+            database.mediaProgressDao().deleteByBookId(progress.bookId)
+        } else {
+            database.mediaProgressDao().upsert(progress.copy(pendingUpload = false))
+        }
+        diagnosticEventLogger?.record(
+            "progress_replayed",
+            mapOf("bookId" to progress.bookId, "sessionId" to sessionId),
+        )
+        return true
+    }
+
+    private suspend fun applyServerProgress(
+        serverProgress: MediaProgressEntity,
+        activeBookId: String?,
+    ): Boolean {
+        if (!database.bookDao().existsById(serverProgress.bookId)) {
+            return false
+        }
+        val local = database.mediaProgressDao().getByBookId(serverProgress.bookId)
+        val resolution = ProgressConflictPolicy.resolve(
+            local = local,
+            server = serverProgress,
+            isActivePlaybackForItem = activeBookId == serverProgress.bookId,
+        )
+        diagnosticEventLogger?.record(
+            "conflict_resolved",
+            mapOf(
+                "bookId" to serverProgress.bookId,
+                "winner" to when (resolution) {
+                    ProgressConflictResolution.ApplyServer -> "server"
+                    ProgressConflictResolution.DeferServer -> "deferred_server"
+                    ProgressConflictResolution.KeepLocal -> "local"
+                    ProgressConflictResolution.IgnoreEquivalent -> "equivalent"
+                },
+                "source" to "socket",
+            ),
+        )
+        return when (resolution) {
+            ProgressConflictResolution.ApplyServer -> {
+                if (serverProgress.isFinished) {
+                    database.mediaProgressDao().deleteByBookId(serverProgress.bookId)
+                } else {
+                    database.mediaProgressDao().upsert(serverProgress.copy(pendingUpload = false))
+                }
+                true
+            }
+
+            ProgressConflictResolution.DeferServer,
+            ProgressConflictResolution.KeepLocal,
+            ProgressConflictResolution.IgnoreEquivalent,
+            -> false
+        }
     }
 
     private suspend fun syncPlaybackSession(
@@ -165,6 +321,7 @@ class ProgressSyncRepository(
             currentTimeMs = snapshot.currentTimeMs,
             durationMs = durationMs,
             timeListenedMs = snapshot.timeListenedMs,
+            lastUpdateAt = snapshot.lastUpdateAt,
         )
         if (snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED) {
             apiClient.closePlaybackSession(
@@ -209,6 +366,24 @@ class ProgressSyncRepository(
             startedAt = startedAt,
             finishedAt = finishedAt,
             pendingUpload = false,
+        )
+    }
+
+    private fun MediaProgressSummary.toEntity(): MediaProgressEntity {
+        return toEntity(fallbackLastUpdate = lastUpdateAt)
+    }
+
+    private fun MediaProgressEntity.toSnapshot(sessionId: String): PlaybackProgressSnapshot {
+        return PlaybackProgressSnapshot(
+            bookId = bookId,
+            playbackSessionId = sessionId,
+            currentTimeMs = currentTimeMs,
+            durationMs = durationMs,
+            timeListenedMs = 0L,
+            isFinished = isFinished,
+            reason = if (isFinished) PlaybackProgressReason.ENDED else PlaybackProgressReason.PERIODIC,
+            lastUpdateAt = lastUpdateAt,
+            offlineStarted = true,
         )
     }
 

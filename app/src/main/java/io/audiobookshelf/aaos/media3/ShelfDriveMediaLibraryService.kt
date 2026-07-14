@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.media3
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.SystemClock
 import android.util.Log
@@ -18,6 +19,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.LibraryResult
@@ -27,6 +29,7 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionError
 import androidx.media3.session.SessionResult
+import androidx.preference.PreferenceManager
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -34,11 +37,15 @@ import io.audiobookshelf.aaos.absapi.ApiException
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
+import io.audiobookshelf.aaos.absapi.ConnectivityMonitor
+import io.audiobookshelf.aaos.absapi.LinkQuality
+import io.audiobookshelf.aaos.absapi.socket.AbsSocketClient
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthRepository
 import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.auth.AuthStatus
 import io.audiobookshelf.aaos.auth.AuthStorage
+import io.audiobookshelf.aaos.auth.ServerUrlPolicy
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.cache.CacheCommands
@@ -91,6 +98,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var playbackStateStorage: PlaybackStateStorage
     private lateinit var progressSyncRepository: ProgressSyncRepository
     private lateinit var cacheRepository: CacheRepository
+    private lateinit var socketClient: AbsSocketClient
+    private lateinit var connectivityMonitor: ConnectivityMonitor
     private lateinit var diagnosticsStorage: StartupDiagnosticsStorage
     private lateinit var diagnosticEventLogger: DiagnosticEventLogger
     private lateinit var mediaCatalog: ShelfDriveMediaCatalog
@@ -98,6 +107,14 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var player: ExoPlayer
     private lateinit var sessionPlayer: Player
     private lateinit var mediaLibrarySession: MediaLibrarySession
+
+    private lateinit var defaultSharedPreferences: SharedPreferences
+    private val playbackPreferenceChangeListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == getString(R.string.settings_key_skip_increment) && ::player.isInitialized) {
+                applySkipIncrement()
+            }
+        }
 
     private val httpDataSourceFactory = DefaultHttpDataSource.Factory()
     private var activeBook: ResolvedAudiobookPlayback? = null
@@ -115,6 +132,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         diagnosticEventLogger = DiagnosticEventLogger(this)
         diagnosticsStorage.recordServiceStarted()
         traceMethod("onCreate")
+
+        defaultSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
 
         authStorage = AuthStorage(this)
         val apiClient = AudiobookshelfApiClient()
@@ -137,6 +156,17 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             apiClient = apiClient,
             diagnosticEventLogger = diagnosticEventLogger,
         )
+        socketClient = AbsSocketClient(
+            authStorage = authStorage,
+            authRepository = authRepository,
+            scope = serviceScope,
+            diagnosticEventLogger = diagnosticEventLogger,
+        )
+        connectivityMonitor = ConnectivityMonitor(
+            context = this,
+            socketClient = socketClient,
+            scope = serviceScope,
+        )
         cacheRepository = CacheRepository(this, database)
         playbackRepository = AudiobookshelfPlaybackRepository(
             authRepository = authRepository,
@@ -147,8 +177,20 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         playbackStateStorage = PlaybackStateStorage(this)
         traceMethod("onCreate:diagnosticsInitialized")
         diagnosticEventLogger.record("service_started")
+        observeSocketEvents()
+        observeConnectivity()
 
         player = ExoPlayer.Builder(this)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        MIN_BUFFER_MS,
+                        MAX_BUFFER_MS,
+                        BUFFER_FOR_PLAYBACK_MS,
+                        BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                    )
+                    .build(),
+            )
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(
                     PlaybackAudioCache.createDataSourceFactory(
@@ -157,8 +199,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     ),
                 ),
             )
-            .setSeekBackIncrementMs(SEEK_INCREMENT_MS)
-            .setSeekForwardIncrementMs(SEEK_INCREMENT_MS)
+            .setSeekBackIncrementMs(skipIncrementMs())
+            .setSeekForwardIncrementMs(skipIncrementMs())
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(C.USAGE_MEDIA)
@@ -180,6 +222,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             .setCustomLayout(sessionPolicy.customLayout(player.playbackParameters.speed))
             .setMediaButtonPreferences(sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed))
             .build()
+        defaultSharedPreferences.registerOnSharedPreferenceChangeListener(playbackPreferenceChangeListener)
 
         publishStoredPlaybackPlaceholder()
 
@@ -193,6 +236,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     restoreStoredPlaybackWithTimeout()
                 }
                 if (initialAuth.isAuthenticated) {
+                    connectSocketFromStoredAuth()
                     val snapshot = syncRepository.syncIfStale()
                     updateSyncSnapshot(snapshot)
                     diagnosticEventLogger.record(
@@ -204,6 +248,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     )
                     if (snapshot.status != SyncStatus.FAILED) {
                         progressSyncRepository.refreshInProgress()
+                        progressSyncRepository.replayPendingUploads()
                     }
                 }
             }.onFailure { exception ->
@@ -266,6 +311,15 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
         periodicProgressJob?.cancel()
         playbackRecoveryJob?.cancel()
+        if (::connectivityMonitor.isInitialized) {
+            connectivityMonitor.close()
+        }
+        if (::socketClient.isInitialized) {
+            socketClient.disconnect()
+        }
+        if (::defaultSharedPreferences.isInitialized) {
+            defaultSharedPreferences.unregisterOnSharedPreferenceChangeListener(playbackPreferenceChangeListener)
+        }
         mediaLibrarySession.release()
         player.removeListener(this)
         player.release()
@@ -445,6 +499,12 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     "parentId" to parentId,
                     "effectiveParentId" to effectiveParentId,
                 ),
+            )
+            session.notifyChildrenChanged(
+                browser,
+                effectiveParentId,
+                browseChildCount(effectiveParentId),
+                if (effectiveParentId == BrowseNodeId.Root.serialize()) mediaCatalog.rootParams(params) else params,
             )
             return Futures.immediateFuture(LibraryResult.ofVoid(params))
         }
@@ -691,13 +751,13 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 ),
             )
             return when {
-                action == ShelfDriveSessionPolicy.CMD_SEEK_BACK_15 -> serviceFuture(action) {
-                    seekBy(-SEEK_INCREMENT_MS)
+                action == ShelfDriveSessionPolicy.CMD_SEEK_BACK -> serviceFuture(action) {
+                    seekBy(-skipIncrementMs())
                     SessionResult(SessionResult.RESULT_SUCCESS)
                 }
 
-                action == ShelfDriveSessionPolicy.CMD_SEEK_FORWARD_15 -> serviceFuture(action) {
-                    seekBy(SEEK_INCREMENT_MS)
+                action == ShelfDriveSessionPolicy.CMD_SEEK_FORWARD -> serviceFuture(action) {
+                    seekBy(skipIncrementMs())
                     SessionResult(SessionResult.RESULT_SUCCESS)
                 }
 
@@ -723,6 +783,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                         requestedPassword = args.getString(AuthCommands.EXTRA_PASSWORD),
                     )
                     updateAuthSnapshot(snapshot)
+                    if (snapshot.isAuthenticated) {
+                        connectSocketFromStoredAuth()
+                        progressSyncRepository.replayPendingUploads()
+                    }
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
@@ -736,6 +800,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     transientPlaybackRetryAttempt = 0
                     playbackStateStorage.clear()
                     val snapshot = authRepository.logout()
+                    socketClient.disconnect()
                     cacheRepository.clearCache()
                     updateAuthSnapshot(snapshot)
                     updateSyncSnapshot(SyncSnapshot(status = SyncStatus.IDLE))
@@ -1416,6 +1481,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         seekToLogicalPosition(targetPositionMs)
     }
 
+    private fun skipIncrementMs(): Long {
+        return PlaybackPreferences.skipIncrementMs(this)
+    }
+
     private fun logicalPlaybackPositionMs(): Long {
         traceMethod("logicalPlaybackPositionMs")
         val playback = activeBook ?: return player.currentPosition.coerceAtLeast(0L)
@@ -1466,6 +1535,13 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 sessionPolicy.mediaButtonPreferences(player.playbackParameters.speed),
             )
         }
+    }
+
+    private fun applySkipIncrement() {
+        val incrementMs = skipIncrementMs()
+        player.setSeekBackIncrementMs(incrementMs)
+        player.setSeekForwardIncrementMs(incrementMs)
+        updateMediaButtonPreferences()
     }
 
     private fun Throwable.restoreFailureCategory(): String {
@@ -1577,12 +1653,12 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
         override fun seekBack() {
             traceMethod("AudiobookProgressPlayer.seekBack")
-            seekBy(-SEEK_INCREMENT_MS)
+            seekBy(-skipIncrementMs())
         }
 
         override fun seekForward() {
             traceMethod("AudiobookProgressPlayer.seekForward")
-            seekBy(SEEK_INCREMENT_MS)
+            seekBy(skipIncrementMs())
         }
 
         override fun play() {
@@ -1605,6 +1681,50 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         notifyBrowseTreeChanged()
     }
 
+    private fun observeSocketEvents() {
+        serviceScope.launch {
+            socketClient.events.collect { event ->
+                val changed = runCatching {
+                    progressSyncRepository.applySocketEvent(event, activeBook?.bookId)
+                }.getOrElse { exception ->
+                    if (exception is CancellationException) {
+                        throw exception
+                    }
+                    Log.w(TAG, "Socket event handling failed.", exception)
+                    diagnosticEventLogger.record("socket_event_failed", exceptionDiagnostics(exception))
+                    false
+                }
+                if (changed) {
+                    notifyBrowseTreeChanged()
+                }
+            }
+        }
+    }
+
+    private fun observeConnectivity() {
+        serviceScope.launch {
+            var wasOnline = false
+            connectivityMonitor.quality.collect { quality ->
+                diagnosticEventLogger.record("link_quality_changed", mapOf("quality" to quality.name))
+                val isOnline = quality == LinkQuality.ONLINE
+                if (isOnline && !wasOnline) {
+                    progressSyncRepository.refreshInProgress()
+                    progressSyncRepository.replayPendingUploads()
+                    notifyBrowseTreeChanged()
+                }
+                wasOnline = isOnline
+            }
+        }
+    }
+
+    private fun connectSocketFromStoredAuth() {
+        val baseUrl = ServerUrlPolicy.validate(authStorage.load().baseUrl).normalizedUrl
+        if (baseUrl.isNullOrBlank()) {
+            return
+        }
+        socketClient.connect(baseUrl)
+    }
+
     private fun updateSyncSnapshot(snapshot: SyncSnapshot) {
         traceMethod("updateSyncSnapshot", mapOf("status" to snapshot.status.name))
         mediaCatalog.syncSnapshot = snapshot
@@ -1621,10 +1741,18 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private fun notifyBrowseTreeChangedGlobally() {
         traceMethod("notifyBrowseTreeChangedGlobally")
-        mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Root.serialize(), ROOT_CHILD_COUNT, mediaCatalog.rootParams(null))
+        mediaLibrarySession.notifyChildrenChanged(
+            BrowseNodeId.Root.serialize(),
+            browseChildCount(BrowseNodeId.Root.serialize()),
+            mediaCatalog.rootParams(null),
+        )
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
+    }
+
+    private fun browseChildCount(parentId: String): Int {
+        return if (parentId == BrowseNodeId.Root.serialize()) ROOT_CHILD_COUNT else Int.MAX_VALUE
     }
 
     private fun hasStoredLoginCredentials(): Boolean {
@@ -1770,8 +1898,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     companion object {
         private const val TAG = "ShelfDriveMedia3"
-        private const val SEEK_INCREMENT_MS = 15_000L
         private const val PROGRESS_UPDATE_INTERVAL_MS = 15_000L
+        private const val MIN_BUFFER_MS = 30_000
+        private const val MAX_BUFFER_MS = 180_000
+        private const val BUFFER_FOR_PLAYBACK_MS = 2_500
+        private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
         private const val RESTORE_TIMEOUT_MS = 8_000L
         private const val AUTH_REQUIRED_SETTINGS_REQUEST_CODE = 1001
         private const val ROOT_CHILD_COUNT = 3

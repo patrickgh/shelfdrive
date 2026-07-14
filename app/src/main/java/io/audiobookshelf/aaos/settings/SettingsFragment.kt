@@ -10,6 +10,7 @@ import android.util.TypedValue
 import android.view.View
 import androidx.appcompat.app.AlertDialog
 import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceCategory
 import androidx.preference.PreferenceFragmentCompat
@@ -49,6 +50,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         restoreDrafts(savedInstanceState)
         applyAutomotivePreferenceLayouts()
         configureEditablePreferences()
+        configurePlaybackPreferences()
         configureActions()
         renderState(
             commandChannelReady = (activity as? SettingsActivity)?.isCommandChannelReady() == true,
@@ -228,6 +230,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 true
             }
         }
+    }
+
+    private fun configurePlaybackPreferences() {
+        findPreference<ListPreference>(KEY_SKIP_INCREMENT)?.summaryProvider =
+            ListPreference.SimpleSummaryProvider.getInstance()
     }
 
     private fun configureActions() {
@@ -644,6 +651,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
+        private const val KEY_SKIP_INCREMENT = "skip_increment"
         private const val KEY_LIBRARY_COUNT = "library_count"
         private const val KEY_ACCOUNT_ACTION = "account_action"
         private const val KEY_RESYNC_ACTION = "resync_action"

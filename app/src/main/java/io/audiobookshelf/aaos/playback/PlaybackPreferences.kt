@@ -11,6 +11,18 @@ object PlaybackPreferences {
             .getBoolean(appContext.getString(R.string.settings_key_rewind_on_pause), false)
     }
 
+    fun skipIncrementSeconds(context: Context): Long {
+        val appContext = context.applicationContext
+        val preferenceKey = appContext.getString(R.string.settings_key_skip_increment)
+        val rawValue = PreferenceManager.getDefaultSharedPreferences(appContext)
+            .getString(preferenceKey, PlaybackSkipPolicy.DEFAULT_SKIP_INCREMENT_SECONDS.toString())
+        return PlaybackSkipPolicy.secondsFromPreference(rawValue)
+    }
+
+    fun skipIncrementMs(context: Context): Long {
+        return skipIncrementSeconds(context) * 1_000L
+    }
+
     fun playbackSpeed(context: Context): Float {
         val appContext = context.applicationContext
         return PreferenceManager.getDefaultSharedPreferences(appContext)

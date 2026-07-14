@@ -55,6 +55,14 @@
         android:key="playback_category"
         android:title="@string/settings_category_playback">
 
+        <ListPreference
+            android:key="@string/settings_key_skip_increment"
+            android:defaultValue="15"
+            android:title="@string/settings_skip_increment_title"
+            android:summary="@string/settings_skip_increment_summary"
+            android:entries="@array/settings_skip_increment_entries"
+            android:entryValues="@array/settings_skip_increment_values" />
+
         <CheckBoxPreference
             android:key="@string/settings_key_rewind_on_pause"
             android:defaultValue="false"

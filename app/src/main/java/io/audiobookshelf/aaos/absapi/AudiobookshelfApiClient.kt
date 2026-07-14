@@ -29,7 +29,7 @@ class AudiobookshelfApiClient(
                     "x-return-tokens" to "true",
                 ),
                 body = payload,
-                retryProfile = RetryProfile.NONE,
+                retryProfile = RetryProfile.SESSION_SYNC,
             ),
         )
 
@@ -649,6 +649,7 @@ internal fun playbackSessionUpdateRequestFields(sessionUpdate: PlaybackSessionUp
         put("currentTime", sessionUpdate.currentTimeMs / 1000.0)
         put("timeListened", sessionUpdate.timeListenedMs / 1000.0)
         put("duration", sessionUpdate.durationMs / 1000.0)
+        put("lastUpdate", sessionUpdate.lastUpdateAt)
     }
 }
 
@@ -741,6 +742,7 @@ data class PlaybackSessionUpdateRequest(
     val currentTimeMs: Long,
     val durationMs: Long,
     val timeListenedMs: Long,
+    val lastUpdateAt: Long,
 )
 
 class ApiException(

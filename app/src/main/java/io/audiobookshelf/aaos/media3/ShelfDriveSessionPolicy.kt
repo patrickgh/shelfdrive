@@ -12,6 +12,7 @@ import androidx.media3.session.SessionCommands
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.cache.CacheCommands
+import io.audiobookshelf.aaos.playback.PlaybackPreferences
 import io.audiobookshelf.aaos.sync.SyncCommands
 
 @OptIn(UnstableApi::class)
@@ -21,8 +22,8 @@ internal class ShelfDriveSessionPolicy(
     fun availableSessionCommands(controller: MediaSession.ControllerInfo): SessionCommands {
         val builder = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
-            .add(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
-            .add(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
+            .add(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
+            .add(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
             .add(SessionCommand(CMD_CYCLE_PLAYBACK_SPEED, Bundle.EMPTY))
         if (!isAppController(controller)) {
             return builder.build()
@@ -67,19 +68,41 @@ internal class ShelfDriveSessionPolicy(
     }
 
     private fun rewindButton(): CommandButton {
-        return CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
-            .setSessionCommand(SessionCommand(CMD_SEEK_BACK_15, Bundle.EMPTY))
-            .setDisplayName(context.getString(R.string.media_action_rewind_15))
+        val skipIncrementSeconds = PlaybackPreferences.skipIncrementSeconds(context)
+        return CommandButton.Builder(skipBackIcon(skipIncrementSeconds))
+            .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
+            .setDisplayName(context.getString(R.string.media_action_rewind, skipIncrementSeconds))
             .setSlots(CommandButton.SLOT_BACK)
             .build()
     }
 
     private fun forwardButton(): CommandButton {
-        return CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_15)
-            .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD_15, Bundle.EMPTY))
-            .setDisplayName(context.getString(R.string.media_action_forward_15))
+        val skipIncrementSeconds = PlaybackPreferences.skipIncrementSeconds(context)
+        return CommandButton.Builder(skipForwardIcon(skipIncrementSeconds))
+            .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
+            .setDisplayName(context.getString(R.string.media_action_forward, skipIncrementSeconds))
             .setSlots(CommandButton.SLOT_FORWARD)
             .build()
+    }
+
+    private fun skipBackIcon(skipIncrementSeconds: Long): Int {
+        return when (skipIncrementSeconds) {
+            5L -> CommandButton.ICON_SKIP_BACK_5
+            10L -> CommandButton.ICON_SKIP_BACK_10
+            15L -> CommandButton.ICON_SKIP_BACK_15
+            30L -> CommandButton.ICON_SKIP_BACK_30
+            else -> CommandButton.ICON_SKIP_BACK
+        }
+    }
+
+    private fun skipForwardIcon(skipIncrementSeconds: Long): Int {
+        return when (skipIncrementSeconds) {
+            5L -> CommandButton.ICON_SKIP_FORWARD_5
+            10L -> CommandButton.ICON_SKIP_FORWARD_10
+            15L -> CommandButton.ICON_SKIP_FORWARD_15
+            30L -> CommandButton.ICON_SKIP_FORWARD_30
+            else -> CommandButton.ICON_SKIP_FORWARD
+        }
     }
 
     private fun playbackSpeedButton(playbackSpeed: Float): CommandButton {
@@ -99,8 +122,8 @@ internal class ShelfDriveSessionPolicy(
         controller.uid == context.applicationInfo.uid && controller.packageName == context.packageName
 
     companion object {
-        const val CMD_SEEK_BACK_15 = "io.shelfdrive.app.media3.SEEK_BACK_15"
-        const val CMD_SEEK_FORWARD_15 = "io.shelfdrive.app.media3.SEEK_FORWARD_15"
+        const val CMD_SEEK_BACK = "io.shelfdrive.app.media3.SEEK_BACK"
+        const val CMD_SEEK_FORWARD = "io.shelfdrive.app.media3.SEEK_FORWARD"
         const val CMD_CYCLE_PLAYBACK_SPEED = "io.shelfdrive.app.media3.CYCLE_PLAYBACK_SPEED"
 
         private val PLAYBACK_SPEEDS = listOf(

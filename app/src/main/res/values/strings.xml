@@ -8,6 +8,7 @@
     <string name="settings_category_storage">About</string>
     <string name="settings_category_diagnostics">Diagnostics</string>
     <string name="settings_key_rewind_on_pause" translatable="false">rewind_on_pause</string>
+    <string name="settings_key_skip_increment" translatable="false">skip_increment</string>
     <string name="settings_auth_status_logged_out">Not signed in</string>
     <string name="settings_auth_status_authenticated">Signed in</string>
     <string name="settings_auth_status_session_expired">Session expired</string>
@@ -25,6 +26,13 @@
     <string name="settings_logout_title">Log out</string>
     <string name="settings_resync_title">Sync now</string>
     <string name="settings_clear_cache_title">Clear cache</string>
+    <string name="settings_skip_increment_title">Skip interval</string>
+    <string name="settings_skip_increment_summary">Amount moved by the back and forward buttons.</string>
+    <string name="settings_skip_increment_5">5 seconds</string>
+    <string name="settings_skip_increment_10">10 seconds</string>
+    <string name="settings_skip_increment_15">15 seconds</string>
+    <string name="settings_skip_increment_30">30 seconds</string>
+    <string name="settings_skip_increment_60">60 seconds</string>
     <string name="settings_rewind_on_pause_title">Replay 15 seconds after pause</string>
     <string name="settings_rewind_on_pause_summary">Rewinds 15 seconds when pausing, so playback resumes with a short recap.</string>
     <string name="settings_login_summary">Signs this vehicle in to your Audiobookshelf server.</string>
@@ -71,8 +79,8 @@
     <string name="settings_diagnostics_upload_disclosure_title">Send diagnostics?</string>
     <string name="settings_diagnostics_upload_disclosure_text">ShelfDrive will create a ZIP package with app diagnostics and upload it to the diagnostics upload URL shown in Settings. The package may include app logs, app version, device/runtime details, connection and sync status, cache status, restore status, and error messages. It does not include your saved password.\n\nSend diagnostics only if you want to share this information with the recipient of the shown upload URL.</string>
     <string name="settings_diagnostics_upload_confirm">Send diagnostics</string>
-    <string name="media_action_rewind_15">Back 15 seconds</string>
-    <string name="media_action_forward_15">Forward 15 seconds</string>
+    <string name="media_action_rewind">Back %1$d seconds</string>
+    <string name="media_action_forward">Forward %1$d seconds</string>
     <string name="media_action_playback_speed_value">Playback speed %1$s</string>
     <string name="settings_library_count_unknown">No catalog data yet</string>
     <string name="settings_catalog_counts">%1$d libraries · %2$d audiobooks · %3$d authors</string>

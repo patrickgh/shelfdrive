@@ -126,6 +126,9 @@ interface MediaProgressDao {
     @Query("DELETE FROM media_progress")
     suspend fun clearAll()
 
+    @Query("DELETE FROM media_progress WHERE pendingUpload = 0")
+    suspend fun clearUploaded()
+
     @Query("DELETE FROM media_progress WHERE bookId = :bookId")
     suspend fun deleteByBookId(bookId: String)
 

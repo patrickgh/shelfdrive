@@ -7,6 +7,7 @@
     <string name="settings_category_playback">Wiedergabe</string>
     <string name="settings_category_storage">Info</string>
     <string name="settings_category_diagnostics">Diagnose</string>
+    <string name="settings_key_skip_increment" translatable="false">skip_increment</string>
     <string name="settings_auth_status_logged_out">Nicht eingeloggt</string>
     <string name="settings_auth_status_authenticated">Eingeloggt</string>
     <string name="settings_auth_status_session_expired">Sitzung abgelaufen</string>
@@ -24,6 +25,13 @@
     <string name="settings_logout_title">Ausloggen</string>
     <string name="settings_resync_title">Neu synchronisieren</string>
     <string name="settings_clear_cache_title">Cache leeren</string>
+    <string name="settings_skip_increment_title">Sprungweite</string>
+    <string name="settings_skip_increment_summary">Zeitspanne, um die die Zurück- und Vorwärts-Tasten springen.</string>
+    <string name="settings_skip_increment_5">5 Sekunden</string>
+    <string name="settings_skip_increment_10">10 Sekunden</string>
+    <string name="settings_skip_increment_15">15 Sekunden</string>
+    <string name="settings_skip_increment_30">30 Sekunden</string>
+    <string name="settings_skip_increment_60">60 Sekunden</string>
     <string name="settings_rewind_on_pause_title">15 Sekunden nach Pause wiederholen</string>
     <string name="settings_rewind_on_pause_summary">Springt beim Pausieren 15 Sekunden zurück, damit beim Fortsetzen kurz wiederholt wird.</string>
     <string name="settings_login_summary">Meldet dieses Fahrzeug bei deinem Audiobookshelf-Server an.</string>
@@ -69,8 +77,8 @@
     <string name="settings_diagnostics_upload_disclosure_title">Diagnose senden?</string>
     <string name="settings_diagnostics_upload_disclosure_text">ShelfDrive erstellt ein ZIP-Paket mit App-Diagnosen und lädt es an die in den Einstellungen angezeigte Diagnose-Upload-URL hoch. Das Paket kann App-Logs, App-Version, Geräte- und Laufzeitdetails, Verbindungs- und Synchronisationsstatus, Cache-Status, Wiederherstellungsstatus und Fehlermeldungen enthalten. Dein gespeichertes Passwort ist nicht enthalten.\n\nSende Diagnosen nur, wenn du diese Informationen mit dem Empfänger der angezeigten Upload-URL teilen möchtest.</string>
     <string name="settings_diagnostics_upload_confirm">Diagnose senden</string>
-    <string name="media_action_rewind_15">15 Sekunden zurück</string>
-    <string name="media_action_forward_15">15 Sekunden vor</string>
+    <string name="media_action_rewind">%1$d Sekunden zurück</string>
+    <string name="media_action_forward">%1$d Sekunden vor</string>
     <string name="media_action_playback_speed_value">Geschwindigkeit %1$s</string>
     <string name="settings_library_count_unknown">Noch keine Katalogdaten</string>
     <string name="settings_catalog_counts">%1$d Bibliotheken · %2$d Hörbücher · %3$d Autoren</string>

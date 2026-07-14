@@ -16,6 +16,7 @@ object NetworkPolicy {
     fun retryDelays(profile: RetryProfile): List<Long> {
         return when (profile) {
             RetryProfile.NONE -> emptyList()
+            RetryProfile.SESSION_SYNC -> listOf(0L)
             RetryProfile.FOREGROUND_IDEMPOTENT -> listOf(0L)
             RetryProfile.BACKGROUND_REFRESH -> backgroundRetryDelaysMs
         }
@@ -38,6 +39,7 @@ object NetworkPolicy {
 
 enum class RetryProfile {
     NONE,
+    SESSION_SYNC,
     FOREGROUND_IDEMPOTENT,
     BACKGROUND_REFRESH,
 }

@@ -67,6 +67,7 @@ Current app metadata:
 - Search the local synced audiobook catalog from the AAOS media host.
 - Play MP3 and M4B audiobooks through ExoPlayer.
 - Use native AAOS now-playing, skip, seek, speed, and media controls.
+- Configure the skip interval to 5, 10, 15, 30, or 60 seconds.
 - Cycle playback speed from the now-playing controls through AAOS-supported values.
 - Sync playback progress back to Audiobookshelf while playback is active.
 - Keep Audiobookshelf as the source of truth for listening progress.
@@ -149,6 +150,7 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Manual catalog resync.
 - Server URL, username, and password.
 - Login/logout action.
+- Configurable skip interval.
 - 15-second rewind-on-pause toggle.
 - Cache usage and clear-cache action.
 - App version.
@@ -180,7 +182,7 @@ ShelfDrive is built around Android media primitives:
 
 - `MediaLibraryService` exposes the browsable audiobook catalog.
 - Media3 `MediaSession` publishes metadata, playback state, and transport actions.
-- Media3 custom commands provide 15-second seek controls and playback-speed cycling.
+- Media3 custom commands provide configurable seek controls and playback-speed cycling.
 - ExoPlayer handles audiobook playback with a bounded local audio cache.
 - Room stores the local catalog and progress cache.
 - AndroidX Security stores credentials and tokens.

@@ -12,11 +12,13 @@ class AudiobookshelfApiClientTest {
                 currentTimeMs = 12_345L,
                 durationMs = 100_000L,
                 timeListenedMs = 5_432L,
+                lastUpdateAt = 1_713_456_789_000L,
             ),
         )
 
         assertEquals(12.345, fields["currentTime"])
         assertEquals(100.0, fields["duration"])
         assertEquals(5.432, fields["timeListened"])
+        assertEquals(1_713_456_789_000L, fields["lastUpdate"])
     }
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="settings_skip_increment_entries">
+        <item>@string/settings_skip_increment_5</item>
+        <item>@string/settings_skip_increment_10</item>
+        <item>@string/settings_skip_increment_15</item>
+        <item>@string/settings_skip_increment_30</item>
+        <item>@string/settings_skip_increment_60</item>
+    </string-array>
+
+    <string-array name="settings_skip_increment_values">
+        <item>5</item>
+        <item>10</item>
+        <item>15</item>
+        <item>30</item>
+        <item>60</item>
+    </string-array>
+</resources>
