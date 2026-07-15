@@ -87,9 +87,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.material)
     implementation(libs.okhttp)
-    implementation("io.socket:socket.io-client:2.1.0") {
-        exclude(group = "org.json", module = "json")
-    }
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

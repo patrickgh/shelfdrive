@@ -50,6 +50,14 @@ class SettingsActivity : AppCompatActivity() {
     private var isStarted: Boolean = false
     private var reconnectAttempt: Int = 0
     private lateinit var diagnosticEventLogger: DiagnosticEventLogger
+    private val cacheRefresh = object : Runnable {
+        override fun run() {
+            if (isStarted && mediaController != null) {
+                requestCacheState()
+                mainHandler.postDelayed(this, CACHE_REFRESH_INTERVAL_MS)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         delegate.setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -301,6 +309,8 @@ class SettingsActivity : AppCompatActivity() {
                     requestAuthState()
                     requestSyncState()
                     requestCacheState()
+                    mainHandler.removeCallbacks(cacheRefresh)
+                    mainHandler.postDelayed(cacheRefresh, CACHE_REFRESH_INTERVAL_MS)
                 }.onFailure { exception ->
                     controllerFuture = null
                     mediaController = null
@@ -399,5 +409,6 @@ class SettingsActivity : AppCompatActivity() {
         private const val RECONNECT_INITIAL_DELAY_MS = 1_000L
         private const val RECONNECT_MAX_DELAY_MS = 30_000L
         private const val RECONNECT_MAX_SHIFT = 5
+        private const val CACHE_REFRESH_INTERVAL_MS = 5_000L
     }
 }

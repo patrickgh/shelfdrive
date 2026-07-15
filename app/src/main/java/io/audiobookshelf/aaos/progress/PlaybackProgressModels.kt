@@ -12,8 +12,8 @@ data class PlaybackProgressSnapshot(
 )
 
 enum class PlaybackProgressReason(val shouldRefreshBrowse: Boolean) {
+    STARTED(false),
     PERIODIC(false),
-    SEEKED(false),
     PAUSED(true),
     STOPPED(true),
     TRACK_CHANGED(true),

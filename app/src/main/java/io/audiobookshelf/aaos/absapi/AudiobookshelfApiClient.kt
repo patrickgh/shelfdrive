@@ -393,12 +393,13 @@ class AudiobookshelfApiClient(
         baseUrl: String,
         accessToken: String,
         itemId: String,
+        retryProfile: RetryProfile = RetryProfile.BACKGROUND_REFRESH,
     ): MediaProgressSummary {
         val response = executeAuthorized(
             baseUrl = baseUrl,
             accessToken = accessToken,
             path = "/api/me/progress/$itemId",
-            retryProfile = RetryProfile.BACKGROUND_REFRESH,
+            retryProfile = retryProfile,
         )
 
         val root = JSONObject(response.body)

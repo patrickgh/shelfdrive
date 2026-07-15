@@ -32,7 +32,6 @@ class PlaybackSnapshotPolicyTest {
                 PlaybackTrack("two", "Two", "https://example.com/two.mp3", "audio/mpeg", 60_000L, 60_000L),
             ),
             positionMs = 75_000L,
-            lastAppliedServerUpdateAt = 42L,
         )
 
         val playback = state.toResolvedPlayback()
