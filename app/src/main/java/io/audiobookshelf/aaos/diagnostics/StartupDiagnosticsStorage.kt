@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.diagnostics
 
 import android.content.Context
+import androidx.core.content.edit
 
 class StartupDiagnosticsStorage(context: Context) {
     private val sharedPreferences = context.applicationContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
@@ -20,19 +21,19 @@ class StartupDiagnosticsStorage(context: Context) {
     }
 
     fun recordServiceStarted(timestamp: Long = System.currentTimeMillis()) {
-        sharedPreferences.edit()
-            .putLong(KEY_LAST_SERVICE_STARTED_AT, timestamp)
-            .apply()
+        sharedPreferences.edit {
+            putLong(KEY_LAST_SERVICE_STARTED_AT, timestamp)
+        }
     }
 
     fun recordRestoreStarted(bookId: String?, timestamp: Long = System.currentTimeMillis()) {
-        sharedPreferences.edit()
-            .putLong(KEY_LAST_RESTORE_STARTED_AT, timestamp)
-            .remove(KEY_LAST_RESTORE_FINISHED_AT)
-            .putString(KEY_LAST_RESTORE_STATUS, PlaybackRestoreStatus.RUNNING.name)
-            .putString(KEY_LAST_RESTORE_BOOK_ID, bookId)
-            .remove(KEY_LAST_RESTORE_MESSAGE)
-            .apply()
+        sharedPreferences.edit {
+            putLong(KEY_LAST_RESTORE_STARTED_AT, timestamp)
+            remove(KEY_LAST_RESTORE_FINISHED_AT)
+            putString(KEY_LAST_RESTORE_STATUS, PlaybackRestoreStatus.RUNNING.name)
+            putString(KEY_LAST_RESTORE_BOOK_ID, bookId)
+            remove(KEY_LAST_RESTORE_MESSAGE)
+        }
     }
 
     fun recordRestoreFinished(
@@ -40,11 +41,11 @@ class StartupDiagnosticsStorage(context: Context) {
         message: String? = null,
         timestamp: Long = System.currentTimeMillis(),
     ) {
-        sharedPreferences.edit()
-            .putLong(KEY_LAST_RESTORE_FINISHED_AT, timestamp)
-            .putString(KEY_LAST_RESTORE_STATUS, status.name)
-            .putString(KEY_LAST_RESTORE_MESSAGE, message?.take(MAX_MESSAGE_LENGTH))
-            .apply()
+        sharedPreferences.edit {
+            putLong(KEY_LAST_RESTORE_FINISHED_AT, timestamp)
+            putString(KEY_LAST_RESTORE_STATUS, status.name)
+            putString(KEY_LAST_RESTORE_MESSAGE, message?.take(MAX_MESSAGE_LENGTH))
+        }
     }
 
     private fun android.content.SharedPreferences.getLongOrNull(key: String): Long? {

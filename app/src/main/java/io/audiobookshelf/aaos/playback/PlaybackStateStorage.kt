@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.playback
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -33,22 +34,22 @@ class PlaybackStateStorage(context: Context) {
     }
 
     fun save(state: StoredPlaybackState) {
-        sharedPreferences.edit()
-            .putString(KEY_BOOK_ID, state.bookId)
-            .putString(KEY_TITLE, state.title)
-            .putString(KEY_AUTHOR, state.author)
-            .putString(KEY_ARTWORK_URI, state.artworkUri?.toString())
-            .putLong(KEY_DURATION_MS, state.durationMs ?: UNKNOWN_DURATION_MS)
-            .putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
-            .putString(KEY_QUEUE, encodeQueue(state.queue))
-            .putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
-            .putLong(KEY_UPDATED_AT, state.updatedAt)
-            .remove(KEY_LAST_APPLIED_SERVER_UPDATE_AT)
-            .apply()
+        sharedPreferences.edit {
+            putString(KEY_BOOK_ID, state.bookId)
+            putString(KEY_TITLE, state.title)
+            putString(KEY_AUTHOR, state.author)
+            putString(KEY_ARTWORK_URI, state.artworkUri?.toString())
+            putLong(KEY_DURATION_MS, state.durationMs ?: UNKNOWN_DURATION_MS)
+            putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
+            putString(KEY_QUEUE, encodeQueue(state.queue))
+            putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
+            putLong(KEY_UPDATED_AT, state.updatedAt)
+            remove(KEY_LAST_APPLIED_SERVER_UPDATE_AT)
+        }
     }
 
     fun clear() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit { clear() }
     }
 
     private fun encodeQueue(queue: List<PlaybackTrack>): String? {

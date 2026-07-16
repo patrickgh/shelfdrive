@@ -1,7 +1,7 @@
 package io.audiobookshelf.aaos.diagnostics
 
-import android.net.Uri
 import android.util.Base64
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -47,7 +47,7 @@ class DiagnosticsUploader {
 
     private fun validateUploadUrl(uploadUrl: String): String {
         val trimmed = uploadUrl.trim()
-        val uri = Uri.parse(trimmed)
+        val uri = trimmed.toUri()
         val scheme = uri.scheme
         if (scheme != "http" && scheme != "https") {
             throw IOException("Upload URL must start with http:// or https://.")

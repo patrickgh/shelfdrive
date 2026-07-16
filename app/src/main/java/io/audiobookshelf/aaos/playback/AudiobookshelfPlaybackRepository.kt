@@ -1,6 +1,6 @@
 package io.audiobookshelf.aaos.playback
 
-import android.net.Uri
+import androidx.core.net.toUri
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.PlaybackSessionSummary
@@ -108,12 +108,12 @@ class AudiobookshelfPlaybackRepository(
     }
 
     private fun resolveContentUrl(baseUrl: String, contentUrl: String): String {
-        val contentUri = Uri.parse(contentUrl)
+        val contentUri = contentUrl.toUri()
         if (contentUri.isAbsolute) {
             return contentUrl
         }
 
-        val baseUri = Uri.parse(baseUrl)
+        val baseUri = baseUrl.toUri()
         val builder = baseUri.buildUpon().encodedQuery(null).fragment(null)
         builder.path(null)
         contentUri.pathSegments

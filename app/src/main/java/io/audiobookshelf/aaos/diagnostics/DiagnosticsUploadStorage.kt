@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.diagnostics
 
 import android.content.Context
+import androidx.core.content.edit
 
 class DiagnosticsUploadStorage(context: Context) {
     private val sharedPreferences = context.applicationContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
@@ -20,18 +21,18 @@ class DiagnosticsUploadStorage(context: Context) {
     }
 
     fun saveUploadUrl(uploadUrl: String) {
-        sharedPreferences.edit()
-            .putString(KEY_UPLOAD_URL, uploadUrl.trim())
-            .apply()
+        sharedPreferences.edit {
+            putString(KEY_UPLOAD_URL, uploadUrl.trim())
+        }
     }
 
     fun recordUploadStarted(timestamp: Long = System.currentTimeMillis()) {
-        sharedPreferences.edit()
-            .putLong(KEY_LAST_UPLOAD_STARTED_AT, timestamp)
-            .remove(KEY_LAST_UPLOAD_FINISHED_AT)
-            .putString(KEY_LAST_UPLOAD_STATUS, DiagnosticsUploadStatus.RUNNING.name)
-            .remove(KEY_LAST_UPLOAD_MESSAGE)
-            .apply()
+        sharedPreferences.edit {
+            putLong(KEY_LAST_UPLOAD_STARTED_AT, timestamp)
+            remove(KEY_LAST_UPLOAD_FINISHED_AT)
+            putString(KEY_LAST_UPLOAD_STATUS, DiagnosticsUploadStatus.RUNNING.name)
+            remove(KEY_LAST_UPLOAD_MESSAGE)
+        }
     }
 
     fun recordUploadFinished(
@@ -39,11 +40,11 @@ class DiagnosticsUploadStorage(context: Context) {
         message: String,
         timestamp: Long = System.currentTimeMillis(),
     ) {
-        sharedPreferences.edit()
-            .putLong(KEY_LAST_UPLOAD_FINISHED_AT, timestamp)
-            .putString(KEY_LAST_UPLOAD_STATUS, status.name)
-            .putString(KEY_LAST_UPLOAD_MESSAGE, message.take(MAX_MESSAGE_LENGTH))
-            .apply()
+        sharedPreferences.edit {
+            putLong(KEY_LAST_UPLOAD_FINISHED_AT, timestamp)
+            putString(KEY_LAST_UPLOAD_STATUS, status.name)
+            putString(KEY_LAST_UPLOAD_MESSAGE, message.take(MAX_MESSAGE_LENGTH))
+        }
     }
 
     private fun android.content.SharedPreferences.getLongOrNull(key: String): Long? {

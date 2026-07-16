@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">ShelfDrive</string>
     <string name="settings_title">Settings</string>
     <string name="settings_back">Back to media view</string>
@@ -21,7 +21,7 @@
     <string name="settings_password_summary_missing">Not set</string>
     <string name="settings_password_summary_saved">Saved</string>
     <string name="settings_login_title">Log in</string>
-    <string name="settings_login_in_progress_title">Logging in...</string>
+    <string name="settings_login_in_progress_title">Logging in…</string>
     <string name="settings_login_in_progress_summary">Checking connection and credentials. This may take a moment on slow networks.</string>
     <string name="settings_logout_title">Log out</string>
     <string name="settings_resync_title">Sync now</string>
@@ -38,10 +38,10 @@
     <string name="settings_login_summary">Signs this vehicle in to your Audiobookshelf server.</string>
     <string name="settings_logout_summary">Removes session and credentials from this vehicle.</string>
     <string name="settings_resync_summary_idle">Loads catalog and recently listened books from the server.</string>
-    <string name="settings_resync_summary_running">Updating...</string>
+    <string name="settings_resync_summary_running">Updating…</string>
     <string name="settings_resync_summary_success">Catalog is up to date.</string>
     <string name="settings_resync_summary_failed">Update not possible. The last catalog remains available.</string>
-    <string name="settings_clear_cache_summary_initial">Calculating storage usage...</string>
+    <string name="settings_clear_cache_summary_initial">Calculating storage usage…</string>
     <string name="settings_clear_cache_summary_usage">Currently used: %1$s</string>
     <string name="settings_clear_cache_summary_scope">Removes catalog data, cover art, local audio cache, and locally cached progress. The login remains saved.</string>
     <string name="settings_clear_cache_summary_cleared">Last cleared: %1$s</string>
@@ -60,7 +60,7 @@
     <string name="settings_diagnostics_upload_url_missing">Not configured</string>
     <string name="settings_diagnostics_upload_title">Send diagnostic package</string>
     <string name="settings_diagnostics_upload_summary">Creates a ZIP with app diagnostics and uploads it.</string>
-    <string name="settings_diagnostics_upload_running">Upload running...</string>
+    <string name="settings_diagnostics_upload_running">Upload running…</string>
     <string name="settings_diagnostics_upload_success">Last upload successful.</string>
     <string name="settings_diagnostics_upload_failed">Last upload failed.</string>
     <string name="settings_diagnostics_upload_finished">Finished: %1$s</string>
@@ -79,11 +79,11 @@
     <string name="settings_diagnostics_upload_disclosure_title">Send diagnostics?</string>
     <string name="settings_diagnostics_upload_disclosure_text">ShelfDrive will create a ZIP package with app diagnostics and upload it to the diagnostics upload URL shown in Settings. The package may include app logs, app version, device/runtime details, connection and sync status, cache status, restore status, and error messages. It does not include your saved password.\n\nSend diagnostics only if you want to share this information with the recipient of the shown upload URL.</string>
     <string name="settings_diagnostics_upload_confirm">Send diagnostics</string>
-    <string name="media_action_rewind">Back %1$d seconds</string>
-    <string name="media_action_forward">Forward %1$d seconds</string>
+    <string name="media_action_rewind" tools:ignore="PluralsCandidate">Back %1$d seconds</string>
+    <string name="media_action_forward" tools:ignore="PluralsCandidate">Forward %1$d seconds</string>
     <string name="media_action_playback_speed_value">Playback speed %1$s</string>
     <string name="settings_library_count_unknown">No catalog data yet</string>
-    <string name="settings_catalog_counts">%1$d libraries · %2$d audiobooks · %3$d authors</string>
+    <string name="settings_catalog_counts" tools:ignore="PluralsCandidate">%1$d libraries · %2$d audiobooks · %3$d authors</string>
     <string name="settings_catalog_updated_and_age">Last updated: %1$s · Age: %2$s</string>
     <string name="settings_catalog_stale_after_failed_sync">The last successful catalog remains available.</string>
     <string name="settings_server_version_summary">Server version: %1$s</string>
@@ -106,15 +106,10 @@
     <string name="status_server_url_credentials_forbidden">Server URL must not include credentials.</string>
     <string name="status_server_url_query_forbidden">Server URL must not include query parameters or fragments.</string>
     <string name="status_server_url_public_http_forbidden">HTTP is not allowed. Use HTTPS.</string>
-    <string name="account_error_bad_request">This account request is not supported.</string>
     <string name="media_root_recent">Recently listened</string>
     <string name="media_root_books">Audiobooks</string>
     <string name="media_root_authors">Authors</string>
     <string name="media_auth_required_title">Login required</string>
-    <string name="media_auth_required_summary">Please sign in from Settings.</string>
-    <string name="media_session_expired_title">Session expired</string>
-    <string name="media_session_expired_summary">Please sign in again from Settings.</string>
-    <string name="media_login_failed_title">Login failed</string>
     <string name="media_connection_problem_title">Connection problem</string>
     <string name="media_settings_hint">Please check the connection in Settings.</string>
     <string name="media_sync_running_title">Sync in progress</string>

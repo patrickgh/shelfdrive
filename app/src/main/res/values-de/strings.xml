@@ -7,7 +7,6 @@
     <string name="settings_category_playback">Wiedergabe</string>
     <string name="settings_category_storage">Info</string>
     <string name="settings_category_diagnostics">Diagnose</string>
-    <string name="settings_key_skip_increment" translatable="false">skip_increment</string>
     <string name="settings_auth_status_logged_out">Nicht eingeloggt</string>
     <string name="settings_auth_status_authenticated">Eingeloggt</string>
     <string name="settings_auth_status_session_expired">Sitzung abgelaufen</string>
@@ -20,7 +19,7 @@
     <string name="settings_password_summary_missing">Nicht gesetzt</string>
     <string name="settings_password_summary_saved">Gespeichert</string>
     <string name="settings_login_title">Einloggen</string>
-    <string name="settings_login_in_progress_title">Login läuft...</string>
+    <string name="settings_login_in_progress_title">Login läuft…</string>
     <string name="settings_login_in_progress_summary">Verbindung und Zugangsdaten werden geprüft. Das kann bei schlechter Verbindung etwas dauern.</string>
     <string name="settings_logout_title">Ausloggen</string>
     <string name="settings_resync_title">Neu synchronisieren</string>
@@ -37,10 +36,10 @@
     <string name="settings_login_summary">Meldet dieses Fahrzeug bei deinem Audiobookshelf-Server an.</string>
     <string name="settings_logout_summary">Entfernt Sitzung und Zugangsdaten von diesem Fahrzeug.</string>
     <string name="settings_resync_summary_idle">Lädt Katalog und zuletzt gehörte Bücher vom Server.</string>
-    <string name="settings_resync_summary_running">Aktualisierung läuft...</string>
+    <string name="settings_resync_summary_running">Aktualisierung läuft…</string>
     <string name="settings_resync_summary_success">Katalog ist aktuell.</string>
     <string name="settings_resync_summary_failed">Aktualisierung nicht möglich. Der letzte Stand bleibt verfügbar.</string>
-    <string name="settings_clear_cache_summary_initial">Speicherbelegung wird ermittelt...</string>
+    <string name="settings_clear_cache_summary_initial">Speicherbelegung wird ermittelt…</string>
     <string name="settings_clear_cache_summary_usage">Verwendet aktuell: %1$s</string>
     <string name="settings_clear_cache_summary_scope">Entfernt Katalogdaten, Coverbilder, den lokalen Audio-Cache und lokal zwischengespeicherten Fortschritt. Die Anmeldung bleibt erhalten.</string>
     <string name="settings_clear_cache_summary_cleared">Zuletzt geleert: %1$s</string>
@@ -59,7 +58,7 @@
     <string name="settings_diagnostics_upload_url_missing">Nicht konfiguriert</string>
     <string name="settings_diagnostics_upload_title">Diagnosepaket senden</string>
     <string name="settings_diagnostics_upload_summary">Erstellt eine ZIP-Datei mit App-Diagnosen und lädt sie hoch.</string>
-    <string name="settings_diagnostics_upload_running">Upload läuft...</string>
+    <string name="settings_diagnostics_upload_running">Upload läuft…</string>
     <string name="settings_diagnostics_upload_success">Letzter Upload erfolgreich.</string>
     <string name="settings_diagnostics_upload_failed">Letzter Upload fehlgeschlagen.</string>
     <string name="settings_diagnostics_upload_finished">Beendet: %1$s</string>
@@ -104,15 +103,10 @@
     <string name="status_server_url_credentials_forbidden">Server-URL darf keine Zugangsdaten enthalten.</string>
     <string name="status_server_url_query_forbidden">Server-URL darf keine Query-Parameter oder Fragmente enthalten.</string>
     <string name="status_server_url_public_http_forbidden">HTTP ist nicht erlaubt. Bitte HTTPS verwenden.</string>
-    <string name="account_error_bad_request">Diese Kontoanfrage wird nicht unterstützt.</string>
     <string name="media_root_recent">Zuletzt gehört</string>
     <string name="media_root_books">Hörbücher</string>
     <string name="media_root_authors">Autoren</string>
     <string name="media_auth_required_title">Anmeldung erforderlich</string>
-    <string name="media_auth_required_summary">Bitte in den Einstellungen anmelden.</string>
-    <string name="media_session_expired_title">Sitzung abgelaufen</string>
-    <string name="media_session_expired_summary">Bitte in den Einstellungen erneut anmelden.</string>
-    <string name="media_login_failed_title">Login fehlgeschlagen</string>
     <string name="media_connection_problem_title">Verbindungsproblem</string>
     <string name="media_settings_hint">Bitte Verbindung in den Einstellungen prüfen.</string>
     <string name="media_sync_running_title">Synchronisierung läuft</string>

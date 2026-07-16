@@ -2,13 +2,13 @@ package io.audiobookshelf.aaos.settings
 
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.net.Uri
 import android.os.Bundle
 import android.text.format.Formatter
 import android.text.InputType
 import android.util.TypedValue
 import android.view.View
 import androidx.appcompat.app.AlertDialog
+import androidx.core.net.toUri
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
@@ -452,7 +452,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun openHomepage() {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.settings_homepage_url)))
+        val intent = Intent(Intent.ACTION_VIEW, getString(R.string.settings_homepage_url).toUri())
         runCatching { startActivity(intent) }
     }
 

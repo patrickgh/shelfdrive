@@ -2,6 +2,7 @@
 package io.audiobookshelf.aaos.auth
 
 import android.content.Context
+import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
@@ -27,17 +28,17 @@ class AuthStorage(context: Context) {
     }
 
     fun save(state: StoredAuthState) {
-        sharedPreferences.edit()
-            .putString(KEY_BASE_URL, state.baseUrl)
-            .putString(KEY_USERNAME, state.username)
-            .putString(KEY_PASSWORD, state.password)
-            .putString(KEY_ACCESS_TOKEN, state.accessToken)
-            .putString(KEY_REFRESH_TOKEN, state.refreshToken)
-            .apply()
+        sharedPreferences.edit {
+            putString(KEY_BASE_URL, state.baseUrl)
+            putString(KEY_USERNAME, state.username)
+            putString(KEY_PASSWORD, state.password)
+            putString(KEY_ACCESS_TOKEN, state.accessToken)
+            putString(KEY_REFRESH_TOKEN, state.refreshToken)
+        }
     }
 
     fun clear() {
-        sharedPreferences.edit().clear().apply()
+        sharedPreferences.edit { clear() }
     }
 
     companion object {

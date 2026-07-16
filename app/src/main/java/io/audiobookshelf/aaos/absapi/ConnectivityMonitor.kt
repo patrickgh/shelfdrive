@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 
 class ConnectivityMonitor(context: Context) {
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
-    private val _networkAvailable = MutableStateFlow(currentNetworkAvailable())
+    private val _networkAvailable = MutableStateFlow(hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET))
     val networkAvailable: StateFlow<Boolean> = _networkAvailable
+    private val _networkValidated = MutableStateFlow(hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED))
+    val networkValidated: StateFlow<Boolean> = _networkValidated
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = publish()
@@ -27,12 +29,13 @@ class ConnectivityMonitor(context: Context) {
     }
 
     private fun publish() {
-        _networkAvailable.value = currentNetworkAvailable()
+        _networkAvailable.value = hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        _networkValidated.value = hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
-    private fun currentNetworkAvailable(): Boolean {
+    private fun hasCapability(capability: Int): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        return capabilities.hasCapability(capability)
     }
 }

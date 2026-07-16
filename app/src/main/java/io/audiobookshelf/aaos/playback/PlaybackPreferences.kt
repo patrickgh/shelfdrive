@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.playback
 
 import android.content.Context
+import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import io.audiobookshelf.aaos.R
 
@@ -33,9 +34,9 @@ object PlaybackPreferences {
     fun savePlaybackSpeed(context: Context, playbackSpeed: Float) {
         val appContext = context.applicationContext
         PreferenceManager.getDefaultSharedPreferences(appContext)
-            .edit()
-            .putFloat(KEY_PLAYBACK_SPEED, playbackSpeed.validPlaybackSpeed())
-            .apply()
+            .edit {
+                putFloat(KEY_PLAYBACK_SPEED, playbackSpeed.validPlaybackSpeed())
+            }
     }
 
     private fun Float.validPlaybackSpeed(): Float {

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/patrickgh/shelfdrive/releases/latest"><img alt="Latest GitHub Release" src="https://img.shields.io/github/v/release/patrickgh/shelfdrive?style=flat-square"/></a>
-  <img alt="Status" src="https://img.shields.io/badge/status-alpha-f59e0b">
+  <img alt="Status" src="https://img.shields.io/badge/status-beta-2563eb">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20Automotive%20OS-3DDC84?logo=android">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white">
   <img alt="minSdk" src="https://img.shields.io/badge/minSdk-29-2563eb?logo=android">
@@ -69,12 +69,12 @@ Current app metadata:
 - Use native AAOS now-playing, skip, seek, speed, and media controls.
 - Configure the skip interval to 5, 10, 15, 30, or 60 seconds.
 - Cycle playback speed from the now-playing controls through AAOS-supported values.
-- Sync playback progress back to Audiobookshelf while playback is active.
+- Reconcile playback progress with Audiobookshelf asynchronously while playback is active.
 - Keep Audiobookshelf as the source of truth for listening progress.
-- Restore the last local playback state after app or vehicle restarts, including immediate AAOS media metadata while the server session is refreshed.
+- Restore the last local playback state after app or vehicle restarts, including immediate playback from cached audio while the server is unavailable.
 - Optionally rewind 15 seconds when pausing, so resume starts with a short recap.
-- Configure server URL, username, password, connection state, sync state, and cache actions in Settings.
-- Cache catalog data, artwork, and a bounded 128 MB opportunistic audio buffer locally.
+- Configure server credentials and playback preferences, inspect connection and sync state, manage the cache, and send diagnostics from Settings.
+- Cache catalog data, artwork, and up to 128 MiB of audio locally, with a time-based forward buffer for fast resumes and network handovers.
 
 ## Non-Goals
 
@@ -90,7 +90,7 @@ Current app metadata:
 To use the app:
 
 - An Android Automotive OS vehicle or emulator with a compatible media host.
-- An Audiobookshelf server reachable from the vehicle.
+- An Audiobookshelf server reachable from the vehicle for sign-in, catalog sync, and new or uncached playback.
 - At least one Audiobookshelf library with media type `books`.
 - Audiobook files playable by ExoPlayer, such as MP3 or M4B.
 
@@ -113,24 +113,30 @@ emulator. Desktop hostnames often do not resolve in AAOS images; use a LAN IP or
 5. Log in and run a catalog sync.
 6. Return to the media view and browse recently listened books, audiobooks, or authors.
 
-ShelfDrive is online-first. Starting playback requires the Audiobookshelf server
-because the app resolves a playback session and stream URLs at play time.
-When a previous playback item exists locally, ShelfDrive publishes its saved
-metadata to AAOS immediately so the media host can keep showing the current
-title while the online playback session is refreshed.
+ShelfDrive prioritizes a fast local resume. When a previous playback item exists,
+the app restores its saved queue, position, and AAOS metadata immediately. If the
+required audio is already cached, playback can start without waiting for the
+network. Session refresh and progress reconciliation run asynchronously and do
+not block this local start.
+
+Signing in, synchronizing the catalog, and starting new or uncached content still
+require a reachable Audiobookshelf server. During an outage, playback can continue
+for the portions of the current audiobook that are already cached.
 
 ## Playback And Progress
 
-ShelfDrive resolves playback through the Audiobookshelf API, builds an ExoPlayer
-queue from the returned audio tracks, and reports progress back to the server.
+For new playback, ShelfDrive resolves the audiobook through the Audiobookshelf
+API and builds an ExoPlayer queue from the returned audio tracks. The resulting
+playback manifest and position are stored locally for subsequent fast resumes.
 
 Progress behavior:
 
-- Periodic progress updates are sent while playback is active.
-- Pause, stop, seek, track change, and completion trigger progress updates.
+- An asynchronous progress cycle starts with playback and repeats every 30 seconds while playback is active.
+- Each cycle reads the server position before deciding whether to update the server.
+- If the server is at least 30 seconds ahead, ShelfDrive seeks forward once to the observed server position. Otherwise, the current local position is sent to the server.
+- Pause, automatic track changes, and completion start additional asynchronous progress cycles. A manual seek is treated as an explicit local choice and sent asynchronously without being undone by an older server position.
 - Finished books are hidden from the local continue-listening cache.
-- If progress changes on another device while ShelfDrive is already playing, the current playback session is not live-merged.
-- Failed progress updates are not queued for offline replay.
+- If the network is unavailable, the current position remains stored locally. Reconciliation resumes when connectivity returns, without delaying playback.
 
 The optional 15-second pause rewind changes the actual player position before
 the pause progress is synced. Pressing play again resumes from the rewound
@@ -153,18 +159,28 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Configurable skip interval.
 - 15-second rewind-on-pause toggle.
 - Cache usage and clear-cache action.
+- Startup diagnostics and an explicit diagnostic-package upload action.
 - App version.
 
 ## Cache Policy
 
 ShelfDrive stores a local catalog cache in Room, artwork in the app cache
-directory, and a bounded 128 MB opportunistic ExoPlayer audio cache. The cache is
-used for browsing, media host presentation, and faster warm resumes; the
-Audiobookshelf server remains the authority for catalog, stream authorization,
-and progress data.
+directory, and ExoPlayer audio in a persistent app-private cache. The audio cache
+is limited to 128 MiB with least-recently-used eviction. ExoPlayer starts as soon
+as a short playable segment is available, then maintains a 20-to-30-minute
+time-based forward buffer for the active audiobook in the background. For
+multi-file audiobooks, ShelfDrive also caches the immediately following tracks
+covering roughly 30 minutes so a network outage can span track boundaries.
 
-The cache can be cleared from Settings. Android may also clear app cache files
-under storage pressure. App uninstall removes all local app data.
+The caches support local browsing, media host presentation, immediate resumes,
+and playback through temporary network outages for audio that has already been
+cached. They are not offline downloads: uncached audio and new playback still
+require the Audiobookshelf server. The server remains the authority for catalog,
+stream authorization, and progress data.
+
+All caches can be cleared from Settings. Android may clear artwork from its
+disposable cache directory under storage pressure. The audio cache manages its
+own size through LRU eviction. App uninstall removes all local app data.
 
 ## Security And Privacy
 
@@ -248,17 +264,17 @@ For Android Automotive OS internal testing, see
 
 ```text
 app/src/main/java/io/audiobookshelf/aaos/absapi      Audiobookshelf API client
-app/src/main/java/io/audiobookshelf/aaos/account     Android account integration
 app/src/main/java/io/audiobookshelf/aaos/artwork     Artwork content provider
 app/src/main/java/io/audiobookshelf/aaos/auth        Authentication and encrypted storage
 app/src/main/java/io/audiobookshelf/aaos/browser     Browse node IDs and catalog repository
 app/src/main/java/io/audiobookshelf/aaos/cache       Local cache handling
 app/src/main/java/io/audiobookshelf/aaos/catalog     Room database entities and DAOs
-app/src/main/java/io/audiobookshelf/aaos/host        Media host launch intents
+app/src/main/java/io/audiobookshelf/aaos/diagnostics Startup diagnostics and diagnostic package handling
 app/src/main/java/io/audiobookshelf/aaos/media3      Media3 library/session service and catalog
 app/src/main/java/io/audiobookshelf/aaos/playback    Playback resolution, queue math, and state storage
 app/src/main/java/io/audiobookshelf/aaos/progress    Progress synchronization
 app/src/main/java/io/audiobookshelf/aaos/settings    Settings activity
+app/src/main/java/io/audiobookshelf/aaos/status      User-visible status mapping
 app/src/main/java/io/audiobookshelf/aaos/sync        Catalog synchronization
 ```
 

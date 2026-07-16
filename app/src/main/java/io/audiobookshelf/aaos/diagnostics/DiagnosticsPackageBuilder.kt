@@ -6,8 +6,8 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
-import android.net.Uri
 import android.os.Build
+import androidx.core.net.toUri
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.cache.CacheSnapshot
@@ -217,14 +217,7 @@ class DiagnosticsPackageBuilder(
         }
     }
 
-    private fun PackageInfo.longVersionCodeCompat(): Long {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            longVersionCode
-        } else {
-            @Suppress("DEPRECATION")
-            versionCode.toLong()
-        }
-    }
+    private fun PackageInfo.longVersionCodeCompat(): Long = longVersionCode
 
     private fun ApplicationInfo.isSystemApp(): Boolean = flags and ApplicationInfo.FLAG_SYSTEM != 0
 
@@ -237,7 +230,7 @@ class DiagnosticsPackageBuilder(
     }
 
     private fun sanitizeBaseUrl(baseUrl: String?): String? {
-        val uri = Uri.parse(baseUrl ?: return null)
+        val uri = (baseUrl ?: return null).toUri()
         val scheme = uri.scheme?.lowercase(Locale.ROOT) ?: return null
         val host = uri.host ?: return null
         val port = uri.port.takeIf { it != -1 }?.let { ":$it" }.orEmpty()

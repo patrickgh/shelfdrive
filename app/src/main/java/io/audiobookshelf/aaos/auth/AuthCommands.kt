@@ -8,7 +8,4 @@ object AuthCommands {
     const val EXTRA_SERVER_URL = "io.shelfdrive.app.extra.SERVER_URL"
     const val EXTRA_USERNAME = "io.shelfdrive.app.extra.USERNAME"
     const val EXTRA_PASSWORD = "io.shelfdrive.app.extra.PASSWORD"
-
-    const val RESULT_OK = 1
-    const val RESULT_ERROR = 2
 }
