@@ -54,6 +54,7 @@ import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
 import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
+import io.audiobookshelf.aaos.playback.PlaybackCachePolicy
 import io.audiobookshelf.aaos.playback.PlaybackPreferences
 import io.audiobookshelf.aaos.playback.PlaybackQueueMath
 import io.audiobookshelf.aaos.playback.PlaybackResolutionException
@@ -90,6 +91,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
+import java.io.InterruptedIOException
 
 @OptIn(UnstableApi::class)
 class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
@@ -126,9 +128,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var lastProgressSampleElapsedRealtimeMs: Long? = null
     private var periodicProgressJob: Job? = null
     private var playbackRecoveryJob: Job? = null
-    private var followingTrackCacheJob: Job? = null
+    private var forwardCacheJob: Job? = null
+    private var activeBookCacheJob: Job? = null
     private var automaticPlaybackRetryUsed: Boolean = false
     private var retryPlaybackWhenNetworkReturns: Boolean = false
+    private var lastTrackTransitionAtMs: Long? = null
     private var wasPlayWhenReady: Boolean = false
     private var placeholderPlaybackState: StoredPlaybackState? = null
     private val progressUpdateMutex = Mutex()
@@ -282,7 +286,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
         periodicProgressJob?.cancel()
         playbackRecoveryJob?.cancel()
-        followingTrackCacheJob?.cancel()
+        forwardCacheJob?.cancel()
+        activeBookCacheJob?.cancel()
         if (::connectivityMonitor.isInitialized) {
             connectivityMonitor.close()
         }
@@ -314,7 +319,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
+        if (playbackState == Player.STATE_BUFFERING) {
+            cancelForwardCache()
+        }
         if (playbackState == Player.STATE_ENDED) {
+            cancelForwardCache()
             emitProgress(PlaybackProgressReason.ENDED)
             periodicProgressJob?.cancel()
             playbackStateStorage.clear()
@@ -323,7 +332,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             automaticPlaybackRetryUsed = false
             retryPlaybackWhenNetworkReturns = false
             saveActivePlaybackState()
-            cacheFollowingTracks()
+            cacheForwardHorizon()
         }
     }
 
@@ -338,16 +347,15 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        cancelForwardCache()
         if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
             return
         }
-        if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
-            followingTrackCacheJob?.cancel()
-            followingTrackCacheJob = null
-        } else {
+        lastTrackTransitionAtMs = System.currentTimeMillis()
+        if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
             emitProgress(PlaybackProgressReason.TRACK_CHANGED)
         }
-        cacheFollowingTracks()
+        cacheForwardHorizon()
     }
 
     override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
@@ -356,6 +364,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onPlayerError(error: PlaybackException) {
+        cancelForwardCache()
         val activeTrack = activeBook?.queue?.getOrNull(currentGlobalTrackIndex())
         Log.e(
             TAG,
@@ -364,13 +373,17 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         )
         diagnosticEventLogger.record(
             "player_error",
-            mapOf(
-                "errorCode" to error.errorCodeName,
-                "message" to error.message,
-                "bookActive" to (activeBook != null).toString(),
-                "bufferedDurationMs" to player.totalBufferedDuration.toString(),
-                "networkValidated" to connectivityMonitor.networkValidated.value.toString(),
-            ),
+            buildMap {
+                put("errorCode", error.errorCodeName)
+                put("message", error.message)
+                put("bookActive", (activeBook != null).toString())
+                put("playbackState", player.playbackState.toString())
+                put("playWhenReady", player.playWhenReady.toString())
+                put("bufferedDurationMs", player.totalBufferedDuration.toString())
+                put("networkAvailable", connectivityMonitor.networkAvailable.value.toString())
+                put("networkValidated", connectivityMonitor.networkValidated.value.toString())
+                putAll(playbackCacheDiagnostics())
+            },
         )
         if (error.isUnauthorizedResponse()) {
             recoverPlaybackAfterUnauthorized()
@@ -1193,16 +1206,101 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
     }
 
+    private fun playbackCacheDiagnostics(): Map<String, String?> {
+        val playback = activeBook ?: return emptyMap()
+        val trackIndex = currentGlobalTrackIndex()
+        val track = playback.queue.getOrNull(trackIndex) ?: return emptyMap()
+        val trackPositionMs = player.currentPosition.coerceAtLeast(0L)
+        val currentStatus = PlaybackAudioCache.trackCacheStatus(
+            context = this,
+            cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, track.id),
+            positionMs = trackPositionMs,
+            durationMs = track.durationMs,
+        )
+        val nextTrack = playback.queue.getOrNull(trackIndex + 1)
+        val nextStatus = nextTrack?.let {
+            PlaybackAudioCache.trackCacheStatus(
+                context = this,
+                cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, it.id),
+                positionMs = 0L,
+                durationMs = it.durationMs,
+            )
+        }
+        return mapOf(
+            "bookId" to playback.bookId,
+            "trackIndex" to trackIndex.toString(),
+            "trackId" to track.id,
+            "trackPositionMs" to trackPositionMs.toString(),
+            "trackDurationMs" to track.durationMs?.toString(),
+            "trackRemainingMs" to track.durationMs
+                ?.minus(trackPositionMs)
+                ?.coerceAtLeast(0L)
+                ?.toString(),
+            "lastTrackTransitionAtMs" to lastTrackTransitionAtMs?.toString(),
+            "currentCachedBytes" to currentStatus.cachedBytes.toString(),
+            "currentContentLengthBytes" to currentStatus.contentLengthBytes?.toString(),
+            "currentCacheSpanCount" to currentStatus.spanCount.toString(),
+            "currentContiguousBytesFromStart" to currentStatus.contiguousBytesFromStart.toString(),
+            "currentContiguousDurationMs" to currentStatus.contiguousDurationMs?.toString(),
+            "currentPositionCached" to currentStatus.hasDataAtPosition.toString(),
+            "nextTrackIndex" to nextTrack?.let { (trackIndex + 1).toString() },
+            "nextTrackId" to nextTrack?.id,
+            "nextCachedBytes" to nextStatus?.cachedBytes?.toString(),
+            "nextContentLengthBytes" to nextStatus?.contentLengthBytes?.toString(),
+            "nextCacheSpanCount" to nextStatus?.spanCount?.toString(),
+            "nextContiguousBytesFromStart" to nextStatus?.contiguousBytesFromStart?.toString(),
+            "nextContiguousDurationMs" to nextStatus?.contiguousDurationMs?.toString(),
+            "nextTrackFullyCached" to nextStatus?.isFullyCached?.toString(),
+            "nextTrackStartCached" to nextStatus?.hasDataAtPosition?.toString(),
+        )
+    }
+
     private fun resetAutomaticPlaybackRecovery() {
         automaticPlaybackRetryUsed = false
         retryPlaybackWhenNetworkReturns = false
     }
 
     private fun updateActiveBook(playback: ResolvedAudiobookPlayback?) {
-        if (activeBook?.bookId != playback?.bookId) {
-            followingTrackCacheJob?.cancel()
-        }
+        val bookChanged = activeBook?.bookId != playback?.bookId
+        val cancelledCacheJob = if (bookChanged) cancelForwardCache() else null
         activeBook = playback
+        if (bookChanged) {
+            playback?.let { retainActiveBookCache(it, cancelledCacheJob) }
+        }
+    }
+
+    private fun retainActiveBookCache(
+        playback: ResolvedAudiobookPlayback,
+        cancelledCacheJob: Job?,
+    ) {
+        val previousCleanupJob = activeBookCacheJob
+        previousCleanupJob?.cancel()
+        activeBookCacheJob = serviceScope.launch {
+            previousCleanupJob?.join()
+            cancelledCacheJob?.join()
+            runCatching {
+                runInterruptible(Dispatchers.IO) {
+                    PlaybackAudioCache.retainBook(
+                        context = this@ShelfDriveMediaLibraryService,
+                        bookId = playback.bookId,
+                    )
+                }
+            }.onSuccess { cleanup ->
+                diagnosticEventLogger.record(
+                    "active_book_cache_retained",
+                    mapOf(
+                        "bookId" to playback.bookId,
+                        "removedTracks" to cleanup.removedTrackCount.toString(),
+                        "removedBytes" to cleanup.removedBytes.toString(),
+                    ),
+                )
+            }.onFailure { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                Log.w(TAG, "Could not retain audio cache for book=${playback.bookId}.", exception)
+            }
+        }
     }
 
     private fun setPlaybackQueue(
@@ -1244,50 +1342,151 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
     }
 
-    private fun cacheFollowingTracks() {
+    private fun cacheForwardHorizon() {
         val playback = activeBook ?: return
-        if (!connectivityMonitor.networkValidated.value || followingTrackCacheJob?.isActive == true) {
+        if (
+            player.playbackState != Player.STATE_READY ||
+            !connectivityMonitor.networkValidated.value ||
+            forwardCacheJob?.isActive == true
+        ) {
             return
         }
-        val firstTrackIndex = currentGlobalTrackIndex() + 1
-        if (firstTrackIndex !in playback.queue.indices) {
+        val currentTrackIndex = currentGlobalTrackIndex()
+        val trackIndices = PlaybackCachePolicy.followingTrackIndices(playback.queue, currentTrackIndex)
+        if (trackIndices.isEmpty()) {
             return
         }
-        var requestedDurationMs = 0L
-        val requests = buildList {
-            for (trackIndex in firstTrackIndex until playback.queue.size) {
-                val track = playback.queue[trackIndex]
-                add(
-                    PlaybackAudioCache.TrackCacheRequest(
-                        uri = track.contentUrl,
-                        cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, track.id),
-                    ),
-                )
-                requestedDurationMs += track.durationMs ?: FOLLOWING_TRACK_CACHE_TARGET_MS
-                if (requestedDurationMs >= FOLLOWING_TRACK_CACHE_TARGET_MS) {
-                    break
-                }
-            }
-        }
-        followingTrackCacheJob = serviceScope.launch {
+        forwardCacheJob = serviceScope.launch {
+            var cacheTrackIndex: Int? = null
             runCatching {
-                runInterruptible(Dispatchers.IO) {
-                    PlaybackAudioCache.cacheTracks(
+                trackIndices.forEach { trackIndex ->
+                    while (
+                        isForwardCacheRelevant(playback, currentTrackIndex) &&
+                        !hasPlaybackBufferForForwardCache(playback, currentTrackIndex)
+                    ) {
+                        delay(FORWARD_CACHE_POLL_INTERVAL_MS)
+                    }
+                    if (!isForwardCacheRelevant(playback, currentTrackIndex)) {
+                        return@runCatching
+                    }
+                    cacheTrackIndex = trackIndex
+                    val track = playback.queue[trackIndex]
+                    val cacheKey = PlaybackAudioCache.stableCacheKey(playback.bookId, track.id)
+                    var lastProgressEventAtMs = 0L
+                    runInterruptible(Dispatchers.IO) {
+                        PlaybackAudioCache.cacheTrack(
+                            context = this@ShelfDriveMediaLibraryService,
+                            upstreamFactory = DefaultDataSource.Factory(
+                                this@ShelfDriveMediaLibraryService,
+                                httpDataSourceFactory,
+                            ),
+                            request = PlaybackAudioCache.TrackCacheRequest(
+                                uri = track.contentUrl,
+                                cacheKey = cacheKey,
+                            ),
+                            onProgress = { contentLengthBytes, cachedBytes ->
+                                val now = SystemClock.elapsedRealtime()
+                                val complete = contentLengthBytes != null && cachedBytes >= contentLengthBytes
+                                if (
+                                    lastProgressEventAtMs == 0L ||
+                                    complete ||
+                                    now - lastProgressEventAtMs >= CACHE_PROGRESS_EVENT_INTERVAL_MS
+                                ) {
+                                    lastProgressEventAtMs = now
+                                    diagnosticEventLogger.record(
+                                        "cache_track_progress",
+                                        mapOf(
+                                            "bookId" to playback.bookId,
+                                            "trackIndex" to trackIndex.toString(),
+                                            "cachedBytes" to cachedBytes.toString(),
+                                            "contentLengthBytes" to contentLengthBytes?.toString(),
+                                        ),
+                                    )
+                                }
+                            },
+                        )
+                    }
+                    val status = PlaybackAudioCache.trackCacheStatus(
                         context = this@ShelfDriveMediaLibraryService,
-                        upstreamFactory = DefaultDataSource.Factory(
-                            this@ShelfDriveMediaLibraryService,
-                            httpDataSourceFactory,
+                        cacheKey = cacheKey,
+                        positionMs = 0L,
+                        durationMs = track.durationMs,
+                    )
+                    val trackDurationMs = track.durationMs?.takeIf { it > 0L }
+                    val trackBytes = status.contentLengthBytes
+                        ?: status.cachedBytes.takeIf { it > 0L }
+                    val estimatedBitrateKbps = if (trackBytes != null && trackDurationMs != null) {
+                        trackBytes * 8L / trackDurationMs
+                    } else {
+                        null
+                    }
+                    diagnosticEventLogger.record(
+                        "cache_track_cached",
+                        mapOf(
+                            "bookId" to playback.bookId,
+                            "trackIndex" to trackIndex.toString(),
+                            "durationMs" to track.durationMs?.toString(),
+                            "cachedBytes" to status.cachedBytes.toString(),
+                            "contentLengthBytes" to status.contentLengthBytes?.toString(),
+                            "spanCount" to status.spanCount.toString(),
+                            "contiguousBytesFromStart" to status.contiguousBytesFromStart.toString(),
+                            "contiguousDurationMs" to status.contiguousDurationMs?.toString(),
+                            "estimatedBitrateKbps" to estimatedBitrateKbps?.toString(),
                         ),
-                        requests = requests,
                     )
                 }
             }.onFailure { exception ->
                 if (exception is CancellationException) {
                     throw exception
                 }
-                Log.w(TAG, "Following-track cache failed for ${playback.bookId}.", exception)
+                if (
+                    exception is InterruptedIOException &&
+                    !isForwardCacheRelevant(playback, currentTrackIndex)
+                ) {
+                    return@onFailure
+                }
+                diagnosticEventLogger.record(
+                    "cache_track_failed",
+                    mapOf(
+                        "bookId" to playback.bookId,
+                        "trackIndex" to cacheTrackIndex?.toString(),
+                        "message" to exception.message,
+                    ),
+                )
+                Log.w(TAG, "Forward cache failed for ${playback.bookId}.", exception)
             }
         }
+    }
+
+    private fun isForwardCacheRelevant(
+        playback: ResolvedAudiobookPlayback,
+        currentTrackIndex: Int,
+    ): Boolean {
+        return activeBook?.bookId == playback.bookId &&
+            currentGlobalTrackIndex() == currentTrackIndex &&
+            player.playbackState == Player.STATE_READY &&
+            connectivityMonitor.networkValidated.value
+    }
+
+    private fun hasPlaybackBufferForForwardCache(
+        playback: ResolvedAudiobookPlayback,
+        currentTrackIndex: Int,
+    ): Boolean {
+        val trackDurationMs = playback.queue.getOrNull(currentTrackIndex)?.durationMs
+        val remainingTrackMs = trackDurationMs
+            ?.minus(player.currentPosition.coerceAtLeast(0L))
+            ?.coerceAtLeast(0L)
+        val requiredBufferMs = remainingTrackMs
+            ?.coerceAtMost(MIN_CURRENT_TRACK_BUFFER_BEFORE_CACHE_MS)
+            ?: MIN_CURRENT_TRACK_BUFFER_BEFORE_CACHE_MS
+        return player.totalBufferedDuration + FORWARD_CACHE_BUFFER_TOLERANCE_MS >= requiredBufferMs
+    }
+
+    private fun cancelForwardCache(): Job? {
+        val job = forwardCacheJob
+        job?.cancel()
+        forwardCacheJob = null
+        return job
     }
 
     private fun emitProgress(reason: PlaybackProgressReason) {
@@ -1651,6 +1850,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                         ),
                     )
                 }
+                if (!isValidated) {
+                    cancelForwardCache()
+                }
                 if (isValidated && !wasValidated) {
                     if (activeBook != null && activePlaybackSessionId == null) {
                         restoreStoredPlaybackWithTimeout(playWhenResolved = player.playWhenReady)
@@ -1658,7 +1860,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     emitProgress(PlaybackProgressReason.PERIODIC)
                     progressSyncRepository.refreshInProgress()
                     retryActivePlaybackAfterNetworkReturn()
-                    cacheFollowingTracks()
+                    cacheForwardHorizon()
                     notifyBrowseTreeChanged()
                 }
                 wasValidated = isValidated
@@ -1824,7 +2026,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         private const val PROGRESS_UPDATE_INTERVAL_MS = 30_000L
         private const val MIN_BUFFER_MS = 20 * 60_000
         private const val MAX_BUFFER_MS = 30 * 60_000
-        private const val FOLLOWING_TRACK_CACHE_TARGET_MS = 30 * 60_000L
+        private const val MIN_CURRENT_TRACK_BUFFER_BEFORE_CACHE_MS = 5L * 60L * 1_000L
+        private const val FORWARD_CACHE_POLL_INTERVAL_MS = 1_000L
+        private const val FORWARD_CACHE_BUFFER_TOLERANCE_MS = 1_000L
+        private const val CACHE_PROGRESS_EVENT_INTERVAL_MS = 5_000L
         private const val BUFFER_FOR_PLAYBACK_MS = 2_500
         private const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = 5_000
         private const val RESTORE_TIMEOUT_MS = 8_000L

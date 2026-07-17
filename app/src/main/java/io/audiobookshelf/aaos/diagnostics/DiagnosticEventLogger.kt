@@ -109,8 +109,8 @@ class DiagnosticEventLogger(context: Context) {
         private const val DIRECTORY_NAME = "diagnostics"
         private const val LOG_FILE_NAME = "events.log"
         private const val BACKUP_LOG_FILE_NAME = "events.previous.log"
-        private const val MAX_LOG_BYTES = 128L * 1024L
-        private const val MAX_LOG_AGE_MS = 10L * 60L * 1000L
-        private const val PRUNE_INTERVAL_MS = 60L * 1000L
+        private const val MAX_LOG_BYTES = 1024L * 1024L
+        private const val MAX_LOG_AGE_MS = 48L * 60L * 60L * 1000L
+        private const val PRUNE_INTERVAL_MS = 10L * 60L * 1000L
     }
 }

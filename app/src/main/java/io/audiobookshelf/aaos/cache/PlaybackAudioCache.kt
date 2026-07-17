@@ -18,8 +18,8 @@ import kotlin.math.roundToLong
 @OptIn(UnstableApi::class)
 object PlaybackAudioCache {
     const val DIRECTORY_NAME = "media"
+    const val MAX_BYTES = 128L * 1024L * 1024L
 
-    private const val MAX_CACHE_BYTES = 128L * 1024L * 1024L
     private const val MIN_PLAYBACK_CACHE_BYTES = 512L * 1024L
     private const val CACHE_KEY_PREFIX = "shelfdrive-audio-v1"
 
@@ -29,6 +29,23 @@ object PlaybackAudioCache {
     data class TrackCacheRequest(
         val uri: String,
         val cacheKey: String,
+    )
+
+    data class TrackCacheStatus(
+        val cachedBytes: Long,
+        val contentLengthBytes: Long?,
+        val spanCount: Int,
+        val contiguousBytesFromStart: Long,
+        val contiguousDurationMs: Long?,
+        val hasDataAtPosition: Boolean,
+    ) {
+        val isFullyCached: Boolean
+            get() = contentLengthBytes != null && cachedBytes >= contentLengthBytes
+    }
+
+    data class ActiveBookCleanup(
+        val removedTrackCount: Int,
+        val removedBytes: Long,
     )
 
     fun stableCacheKey(bookId: String, trackId: String): String {
@@ -55,26 +72,44 @@ object PlaybackAudioCache {
         }
     }
 
-    fun cacheTracks(
+    fun cacheTrack(
         context: Context,
         upstreamFactory: DataSource.Factory,
-        requests: List<TrackCacheRequest>,
+        request: TrackCacheRequest,
+        onProgress: ((contentLengthBytes: Long?, cachedBytes: Long) -> Unit)? = null,
     ) {
-        if (requests.isEmpty()) {
-            return
-        }
         val dataSourceFactory = CacheDataSource.Factory()
             .setCache(getCache(context))
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-
-        requests.forEach { request ->
-            val dataSpec = DataSpec.Builder()
-                .setUri(request.uri)
-                .setKey(request.cacheKey)
-                .build()
-            CacheWriter(dataSourceFactory.createDataSourceForDownloading(), dataSpec, null, null).cache()
+        val dataSpec = DataSpec.Builder()
+            .setUri(request.uri)
+            .setKey(request.cacheKey)
+            .build()
+        val progressListener = onProgress?.let { callback ->
+            CacheWriter.ProgressListener { requestLength, bytesCached, _ ->
+                callback(
+                    requestLength.takeIf { it != C.LENGTH_UNSET.toLong() && it > 0L },
+                    bytesCached,
+                )
+            }
         }
+        CacheWriter(dataSourceFactory.createDataSourceForDownloading(), dataSpec, null, progressListener).cache()
+    }
+
+    fun retainBook(context: Context, bookId: String): ActiveBookCleanup {
+        val activeCache = getCache(context)
+        val activeBookPrefix = "$CACHE_KEY_PREFIX:${bookId.trim()}:"
+        val obsoleteKeys = activeCache.keys.filterNot { it.startsWith(activeBookPrefix) }
+        var removedBytes = 0L
+        obsoleteKeys.forEach { key ->
+            removedBytes += activeCache.getCachedSpans(key).sumOf { it.length }
+            activeCache.removeResource(key)
+        }
+        return ActiveBookCleanup(
+            removedTrackCount = obsoleteKeys.size,
+            removedBytes = removedBytes,
+        )
     }
 
     fun directory(context: Context): File {
@@ -93,7 +128,48 @@ object PlaybackAudioCache {
         positionMs: Long,
         durationMs: Long?,
     ): Boolean {
-        return isCachedAtPosition(getCache(context), cacheKey, positionMs, durationMs)
+        return trackCacheStatus(context, cacheKey, positionMs, durationMs).hasDataAtPosition
+    }
+
+    fun trackCacheStatus(
+        context: Context,
+        cacheKey: String,
+        positionMs: Long,
+        durationMs: Long?,
+    ): TrackCacheStatus {
+        val activeCache = getCache(context)
+        val spans = activeCache.getCachedSpans(cacheKey)
+        val contentLengthBytes = contentLength(activeCache, cacheKey)
+            .takeIf { it != C.LENGTH_UNSET.toLong() && it > 0L }
+        val contiguousBytesFromStart = activeCache.getCachedLength(
+            cacheKey,
+            0L,
+            contentLengthBytes ?: MAX_BYTES,
+        ).coerceAtLeast(0L)
+        return TrackCacheStatus(
+            cachedBytes = spans.sumOf { it.length },
+            contentLengthBytes = contentLengthBytes,
+            spanCount = spans.size,
+            contiguousBytesFromStart = contiguousBytesFromStart,
+            contiguousDurationMs = if (
+                contentLengthBytes != null &&
+                durationMs != null &&
+                durationMs > 0L
+            ) {
+                (durationMs.toDouble() * contiguousBytesFromStart.toDouble() / contentLengthBytes.toDouble())
+                    .roundToLong()
+                    .coerceIn(0L, durationMs)
+            } else {
+                null
+            },
+            hasDataAtPosition = isCachedAtPosition(
+                cache = activeCache,
+                cacheKey = cacheKey,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                contentLength = contentLengthBytes,
+            ),
+        )
     }
 
     private fun isCachedAtPosition(
@@ -101,9 +177,9 @@ object PlaybackAudioCache {
         cacheKey: String,
         positionMs: Long,
         durationMs: Long?,
+        contentLength: Long?,
     ): Boolean {
-        val contentLength = contentLength(cache, cacheKey)
-        if (contentLength == C.LENGTH_UNSET.toLong() || contentLength <= 0L || durationMs == null || durationMs <= 0L) {
+        if (contentLength == null || durationMs == null || durationMs <= 0L) {
             return positionMs <= 0L &&
                 cache.getCachedLength(cacheKey, 0L, MIN_PLAYBACK_CACHE_BYTES) >= MIN_PLAYBACK_CACHE_BYTES
         }
@@ -119,7 +195,7 @@ object PlaybackAudioCache {
         return synchronized(this) {
             cache ?: SimpleCache(
                 directory(context),
-                LeastRecentlyUsedCacheEvictor(MAX_CACHE_BYTES),
+                LeastRecentlyUsedCacheEvictor(MAX_BYTES),
                 StandaloneDatabaseProvider(context.applicationContext),
             ).also { cache = it }
         }

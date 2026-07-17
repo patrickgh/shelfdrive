@@ -96,6 +96,7 @@ class DiagnosticsPackageBuilder(
                     put("totalBytes", cacheSnapshot.totalBytes)
                     put("catalogBytes", cacheSnapshot.catalogBytes)
                     put("artworkBytes", cacheSnapshot.artworkBytes)
+                    put("audioBytes", cacheSnapshot.audioBytes)
                     put("fileCount", cacheSnapshot.fileCount)
                     put("clearedAt", cacheSnapshot.clearedAt)
                 },

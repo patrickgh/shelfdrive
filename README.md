@@ -169,8 +169,18 @@ directory, and ExoPlayer audio in a persistent app-private cache. The audio cach
 is limited to 128 MiB with least-recently-used eviction. ExoPlayer starts as soon
 as a short playable segment is available, then maintains a 20-to-30-minute
 time-based forward buffer for the active audiobook in the background. For
-multi-file audiobooks, ShelfDrive also caches the immediately following tracks
-covering roughly 30 minutes so a network outage can span track boundaries.
+multi-file audiobooks, ShelfDrive gives the active stream priority and then
+caches complete following MP3 files until they cover at least 20 minutes. This
+preload is stopped during buffering or network loss and restarted after playback
+and connectivity are stable. ShelfDrive does not enable cache fragmentation for
+these files.
+
+When the active book changes, audio entries from other books are removed so the
+full 128 MiB remains available for current playback. Measured track bitrates and
+the resulting capacity estimate are recorded before the cache size is reconsidered.
+Diagnostics retain errors for up to 48 hours and record the affected track,
+remaining track duration, last transition, contiguous cache coverage, span count,
+and forward-cache progress without storing access tokens.
 
 The caches support local browsing, media host presentation, immediate resumes,
 and playback through temporary network outages for audio that has already been
