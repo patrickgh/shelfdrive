@@ -42,11 +42,23 @@ internal class ShelfDriveMediaCatalog(
         )
     }
 
+    fun buildResumeRootItem(): MediaItem {
+        return buildBrowsableItem(
+            mediaId = BrowseNodeId.Resume.serialize(),
+            title = context.getString(R.string.app_name),
+            iconUri = drawableUri(R.drawable.ic_app_icon),
+            extras = childStyleExtras(
+                playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
+            ),
+        )
+    }
+
     suspend fun loadChildren(parentId: String): List<MediaItem> {
         val node = BrowseNodeId.parse(parentId) ?: return emptyList()
         return when (node) {
             BrowseNodeId.Root -> listOf(buildRecentRootItem(), buildBooksRootItem(), buildAuthorsRootItem())
             BrowseNodeId.Recent -> loadRecentItems()
+            BrowseNodeId.Resume -> emptyList()
             BrowseNodeId.Books -> loadBooksItems()
             is BrowseNodeId.BooksBucket -> browseRepository.getBooksForBucket(node.bucket).map(::buildPlayableBookItem)
             BrowseNodeId.Authors -> loadAuthorsItems()
@@ -64,6 +76,7 @@ internal class ShelfDriveMediaCatalog(
         return when (node) {
             BrowseNodeId.Root -> buildRootItem()
             BrowseNodeId.Recent -> buildRecentRootItem()
+            BrowseNodeId.Resume -> buildResumeRootItem()
             BrowseNodeId.Books -> buildBooksRootItem()
             BrowseNodeId.Authors -> buildAuthorsRootItem()
             is BrowseNodeId.Book -> browseRepository.getPlayableBook(node.bookId)?.let(::buildPlayableBookItem)
@@ -105,7 +118,10 @@ internal class ShelfDriveMediaCatalog(
         )
     }
 
-    fun rootParams(params: LibraryParams?): LibraryParams {
+    fun rootParams(
+        params: LibraryParams?,
+        isRecent: Boolean = params?.isRecent == true,
+    ): LibraryParams {
         val extras = Bundle(params?.extras ?: Bundle.EMPTY).apply {
             putInt(
                 MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
@@ -118,6 +134,9 @@ internal class ShelfDriveMediaCatalog(
         }
         return LibraryParams.Builder()
             .setExtras(extras)
+            .setRecent(isRecent)
+            .setOffline(params?.isOffline == true)
+            .setSuggested(params?.isSuggested == true)
             .build()
     }
 

@@ -1,32 +1,12 @@
 package io.audiobookshelf.aaos.playback
 
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PlaybackSnapshotPolicyTest {
+class PlaybackModelsTest {
     @Test
-    fun `accepts recent stored playback state`() {
-        val state = storedState(updatedAt = 100_000L)
-
-        assertTrue(PlaybackSnapshotPolicy.isRestorable(state, nowMs = 110_000L))
-    }
-
-    @Test
-    fun `rejects stale stored playback state`() {
-        val state = storedState(updatedAt = 1_000L)
-
-        assertFalse(
-            PlaybackSnapshotPolicy.isRestorable(
-                state,
-                nowMs = 1_000L + PlaybackSnapshotPolicy.RESTORE_MAX_AGE_MS + 1L,
-            ),
-        )
-    }
-
-    @Test
-    fun `builds offline playback directly from stored queue`() {
-        val state = storedState(updatedAt = 100_000L).copy(
+    fun `builds offline playback directly from stored queue regardless of snapshot age`() {
+        val state = storedState(updatedAt = 1L).copy(
             queue = listOf(
                 PlaybackTrack("one", "One", "https://example.com/one.mp3", "audio/mpeg", 60_000L, 0L),
                 PlaybackTrack("two", "Two", "https://example.com/two.mp3", "audio/mpeg", 60_000L, 60_000L),

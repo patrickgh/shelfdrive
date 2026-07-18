@@ -420,14 +420,26 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<MediaItem>> {
+            val isRecent = params?.isRecent == true
             diagnosticEventLogger.record(
                 "browse_root_requested",
                 mapOf(
                     "controllerPackage" to browser.packageName,
                     "controllerUid" to browser.uid.toString(),
+                    "isRecent" to isRecent.toString(),
                 ),
             )
-            return Futures.immediateFuture(LibraryResult.ofItem(mediaCatalog.buildRootItem(), mediaCatalog.rootParams(params)))
+            val rootItem = if (isRecent) {
+                mediaCatalog.buildResumeRootItem()
+            } else {
+                mediaCatalog.buildRootItem()
+            }
+            return Futures.immediateFuture(
+                LibraryResult.ofItem(
+                    rootItem,
+                    mediaCatalog.rootParams(params, isRecent),
+                ),
+            )
         }
 
         override fun onSubscribe(
@@ -450,7 +462,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 browser,
                 effectiveParentId,
                 browseChildCount(effectiveParentId),
-                if (effectiveParentId == BrowseNodeId.Root.serialize()) mediaCatalog.rootParams(params) else params,
+                when (effectiveParentId) {
+                    BrowseNodeId.Root.serialize() -> mediaCatalog.rootParams(params)
+                    BrowseNodeId.Resume.serialize() -> mediaCatalog.rootParams(params, isRecent = true)
+                    else -> params
+                },
             )
             return Futures.immediateFuture(LibraryResult.ofVoid(params))
         }
@@ -482,13 +498,24 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             val effectiveParentId = parentId.normalizedBrowseParentId()
-            if (!hasStoredLoginCredentials() && effectiveParentId != BrowseNodeId.Root.serialize()) {
+            if (
+                !hasStoredLoginCredentials() &&
+                effectiveParentId != BrowseNodeId.Root.serialize() &&
+                effectiveParentId != BrowseNodeId.Resume.serialize()
+            ) {
                 return Futures.immediateFuture(authRequiredResult(browser, effectiveParentId, params))
             }
             return serviceFuture("getChildren:$parentId") {
-                val children = mediaCatalog.loadChildren(effectiveParentId)
                 val node = BrowseNodeId.parse(effectiveParentId)
-                val items = if (node == BrowseNodeId.Root) {
+                val children = if (node == BrowseNodeId.Resume) {
+                    playbackStateStorage.load()
+                        ?.let(PlaybackSnapshotPolicy::placeholderMediaItem)
+                        ?.let(::listOf)
+                        .orEmpty()
+                } else {
+                    mediaCatalog.loadChildren(effectiveParentId)
+                }
+                val items = if (node == BrowseNodeId.Root || node == BrowseNodeId.Resume) {
                     children
                 } else {
                     mediaCatalog.pageItems(children, page, pageSize)
@@ -507,7 +534,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 )
                 LibraryResult.ofItemList(
                     items,
-                    if (node == BrowseNodeId.Root) mediaCatalog.rootParams(params) else params,
+                    when (node) {
+                        BrowseNodeId.Root -> mediaCatalog.rootParams(params)
+                        BrowseNodeId.Resume -> mediaCatalog.rootParams(params, isRecent = true)
+                        else -> params
+                    },
                 )
             }
         }
@@ -593,18 +624,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                         reason = "no_stored_state",
                         controller = controller,
                         isForPlayback = isForPlayback,
-                        allowCurrentPlayerFallback = true,
                     )
-                if (!PlaybackSnapshotPolicy.isRestorable(stored, System.currentTimeMillis())) {
-                    playbackStateStorage.clear()
-                    return@serviceFuture emptyPlaybackResumption(
-                        reason = "stored_state_too_old",
-                        controller = controller,
-                        isForPlayback = isForPlayback,
-                        bookId = stored.bookId,
-                        allowCurrentPlayerFallback = false,
-                    )
-                }
 
                 diagnosticEventLogger.record(
                     "playback_resumption_requested",
@@ -614,6 +634,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                         "isForPlayback" to isForPlayback.toString(),
                     ),
                 )
+
+                if (!isForPlayback) {
+                    return@serviceFuture metadataOnlyPlaybackResumption(stored, controller)
+                }
 
                 stored.toResolvedPlayback()?.let { localPlayback ->
                     val existingSessionId = activePlaybackSessionId.takeIf { activeBook?.bookId == stored.bookId }
@@ -644,7 +668,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     stored = stored,
                     reason = "legacy_state_without_manifest",
                     controller = controller,
-                    isForPlayback = isForPlayback,
                 )
             }
         }
@@ -738,6 +761,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             return when (BrowseNodeId.parse(this)) {
                 BrowseNodeId.Root,
                 BrowseNodeId.Recent,
+                BrowseNodeId.Resume,
                 BrowseNodeId.Books,
                 BrowseNodeId.Authors,
                 -> false
@@ -808,11 +832,28 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         playbackStateStorage.clear()
     }
 
+    private fun metadataOnlyPlaybackResumption(
+        stored: StoredPlaybackState,
+        controller: MediaSession.ControllerInfo,
+    ): MediaSession.MediaItemsWithStartPosition {
+        diagnosticEventLogger.record(
+            "playback_resumption_metadata_returned",
+            mapOf(
+                "controllerPackage" to controller.packageName,
+                "hasTitle" to (!stored.title.isNullOrBlank()).toString(),
+            ),
+        )
+        return MediaSession.MediaItemsWithStartPosition(
+            listOf(PlaybackSnapshotPolicy.placeholderMediaItem(stored)),
+            0,
+            stored.positionMs.coerceAtLeast(0L),
+        )
+    }
+
     private fun placeholderPlaybackResumption(
         stored: StoredPlaybackState,
         reason: String,
         controller: MediaSession.ControllerInfo,
-        isForPlayback: Boolean,
     ): MediaSession.MediaItemsWithStartPosition {
         placeholderPlaybackState = stored
         updateActiveBook(null)
@@ -822,15 +863,12 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         player.setPlaybackParameters(
             PlaybackParameters(stored.playbackSpeed, player.playbackParameters.pitch),
         )
-        if (isForPlayback) {
-            startPlaceholderPlaybackRecovery(stored, playWhenResolved = true, source = "playback_resumption")
-        }
+        startPlaceholderPlaybackRecovery(stored, playWhenResolved = true, source = "playback_resumption")
         diagnosticEventLogger.record(
             "playback_resumption_placeholder_returned",
             mapOf(
                 "reason" to reason,
                 "controllerPackage" to controller.packageName,
-                "isForPlayback" to isForPlayback.toString(),
             ),
         )
         return MediaSession.MediaItemsWithStartPosition(
@@ -844,14 +882,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         reason: String,
         controller: MediaSession.ControllerInfo,
         isForPlayback: Boolean,
-        bookId: String? = null,
-        allowCurrentPlayerFallback: Boolean,
     ): MediaSession.MediaItemsWithStartPosition {
-        val currentItems = if (allowCurrentPlayerFallback) {
-            (0 until player.mediaItemCount).map { index -> player.getMediaItemAt(index) }
-        } else {
-            emptyList()
-        }
+        val currentItems = (0 until player.mediaItemCount).map { index -> player.getMediaItemAt(index) }
         if (currentItems.isNotEmpty()) {
             val startIndex = player.currentMediaItemIndex
                 .takeIf { it in currentItems.indices }
@@ -867,9 +899,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     put("items", currentItems.size.toString())
                     put("startIndex", startIndex.toString())
                     put("startPositionMs", startPositionMs.toString())
-                    if (!bookId.isNullOrBlank()) {
-                        put("bookId", bookId)
-                    }
                 },
             )
             return MediaSession.MediaItemsWithStartPosition(
@@ -886,9 +915,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 put("controllerPackage", controller.packageName)
                 put("controllerUid", controller.uid.toString())
                 put("isForPlayback", isForPlayback.toString())
-                if (!bookId.isNullOrBlank()) {
-                    put("bookId", bookId)
-                }
             },
         )
         return MediaSession.MediaItemsWithStartPosition(
@@ -943,10 +969,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private fun restoreStoredPlaybackLocally() {
         val stored = playbackStateStorage.load()
             ?: return
-        if (!PlaybackSnapshotPolicy.isRestorable(stored, System.currentTimeMillis())) {
-            playbackStateStorage.clear()
-            return
-        }
         val playback = stored.toResolvedPlayback()
         if (playback == null) {
             publishStoredPlaybackPlaceholder(stored)
@@ -1030,12 +1052,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         stored: StoredPlaybackState,
         playWhenResolved: Boolean,
     ) {
-        if (!PlaybackSnapshotPolicy.isRestorable(stored, System.currentTimeMillis())) {
-            playbackStateStorage.clear()
-            diagnosticsStorage.recordRestoreFinished(PlaybackRestoreStatus.SKIPPED, "Stored playback state is too old.")
-            diagnosticEventLogger.record("restore_skipped", mapOf("reason" to "stored_state_too_old"))
-            return
-        }
         runCatching {
             val resolved = playbackRepository.resolveBook(stored.bookId)
             val localPositionMs = if (activeBook?.bookId == stored.bookId) {
@@ -1900,13 +1916,22 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             browseChildCount(BrowseNodeId.Root.serialize()),
             mediaCatalog.rootParams(null),
         )
+        mediaLibrarySession.notifyChildrenChanged(
+            BrowseNodeId.Resume.serialize(),
+            browseChildCount(BrowseNodeId.Resume.serialize()),
+            mediaCatalog.rootParams(null, isRecent = true),
+        )
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
     }
 
     private fun browseChildCount(parentId: String): Int {
-        return if (parentId == BrowseNodeId.Root.serialize()) ROOT_CHILD_COUNT else Int.MAX_VALUE
+        return when (parentId) {
+            BrowseNodeId.Root.serialize() -> ROOT_CHILD_COUNT
+            BrowseNodeId.Resume.serialize() -> if (playbackStateStorage.load() == null) 0 else 1
+            else -> Int.MAX_VALUE
+        }
     }
 
     private fun hasStoredLoginCredentials(): Boolean {

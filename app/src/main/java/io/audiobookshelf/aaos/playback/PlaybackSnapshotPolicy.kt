@@ -7,14 +7,6 @@ import androidx.media3.common.util.UnstableApi
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 
 object PlaybackSnapshotPolicy {
-    const val RESTORE_MAX_AGE_MS = 14L * 24L * 60L * 60L * 1_000L
-
-    fun isRestorable(state: StoredPlaybackState, nowMs: Long): Boolean {
-        return state.bookId.isNotBlank() &&
-            state.updatedAt > 0L &&
-            nowMs - state.updatedAt <= RESTORE_MAX_AGE_MS
-    }
-
     fun placeholderUri(): String {
         return SILENT_WAV_DATA_URI
     }
