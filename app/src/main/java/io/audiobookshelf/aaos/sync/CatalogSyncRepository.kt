@@ -5,8 +5,6 @@ import androidx.room.withTransaction
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
-import io.audiobookshelf.aaos.auth.AuthRepository
-import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
 import io.audiobookshelf.aaos.catalog.persistence.BookAuthorCrossRef
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
@@ -20,12 +18,9 @@ import java.io.IOException
 
 class CatalogSyncRepository(
     private val database: CatalogDatabase,
-    private val authRepository: AuthRepository,
-    private val authStorage: AuthStorage,
+    private val authenticatedRequestRunner: AuthenticatedRequestRunner,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
 ) {
-    private val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
-
     suspend fun loadSnapshot(): SyncSnapshot = withContext(Dispatchers.IO) {
         database.syncStateDao().get()?.toSnapshot() ?: SyncSnapshot(status = SyncStatus.IDLE)
     }
@@ -40,7 +35,6 @@ class CatalogSyncRepository(
                 performSync(
                     baseUrl = context.baseUrl,
                     accessToken = context.accessToken,
-                    serverVersion = previous.serverVersion,
                 )
             }
         } catch (exception: IOException) {
@@ -49,7 +43,6 @@ class CatalogSyncRepository(
                 val staleButUsable = previous.copy(
                     status = if (previous.status == SyncStatus.FAILED) SyncStatus.SUCCESS else previous.status,
                     message = UserVisibleStatus.SERVER_UNREACHABLE,
-                    serverVersion = previous.serverVersion,
                 )
                 persistSyncState(staleButUsable)
                 return@withContext staleButUsable
@@ -60,7 +53,6 @@ class CatalogSyncRepository(
                     is AuthenticationRequiredException -> UserVisibleStatus.SESSION_EXPIRED
                     else -> UserVisibleStatus.CATALOG_SYNC_FAILED
                 },
-                serverVersion = previous.serverVersion,
             )
             persistSyncState(failed)
             failed
@@ -82,18 +74,12 @@ class CatalogSyncRepository(
     private suspend fun performSync(
         baseUrl: String,
         accessToken: String,
-        serverVersion: String?,
     ): SyncSnapshot {
         val libraries = apiClient.getLibraries(baseUrl, accessToken)
             .filter { it.mediaType.equals("book", ignoreCase = true) }
 
-        val libraryEntities = libraries.mapIndexed { index, library ->
-            LibraryEntity(
-                id = library.id,
-                name = library.name,
-                mediaType = library.mediaType,
-                displayOrder = index,
-            )
+        val libraryEntities = libraries.map { library ->
+            LibraryEntity(id = library.id)
         }
 
         val authorMap = linkedMapOf<String, AuthorEntity>()
@@ -129,8 +115,6 @@ class CatalogSyncRepository(
                     coverPath = book.coverPath,
                     durationMs = book.durationMs?.takeIf { it > 0L },
                     authorDisplay = book.authorDisplay,
-                    addedAt = book.addedAt,
-                    updatedAt = System.currentTimeMillis(),
                     isPlayable = book.isPlayable,
                 )
 
@@ -178,7 +162,6 @@ class CatalogSyncRepository(
             bookCount = books.size,
             authorCount = authorMap.size,
             lastSyncedAt = System.currentTimeMillis(),
-            serverVersion = serverVersion,
             message = "Synchronisierung abgeschlossen.",
         )
         persistSyncState(success)
@@ -189,13 +172,11 @@ class CatalogSyncRepository(
         database.syncStateDao().upsert(
             SyncStateEntity(
                 status = snapshot.status.name,
-                lastFullSyncAt = snapshot.lastSyncedAt,
-                lastDeltaSyncAt = snapshot.lastSyncedAt,
+                lastSyncedAt = snapshot.lastSyncedAt,
                 lastSyncError = snapshot.message.takeIf { snapshot.status == SyncStatus.FAILED },
                 libraryCount = snapshot.libraryCount,
                 bookCount = snapshot.bookCount,
                 authorCount = snapshot.authorCount,
-                serverVersion = snapshot.serverVersion,
             ),
         )
     }
@@ -214,8 +195,7 @@ class CatalogSyncRepository(
             libraryCount = libraryCount,
             bookCount = bookCount,
             authorCount = authorCount,
-            lastSyncedAt = lastFullSyncAt ?: lastDeltaSyncAt,
-            serverVersion = serverVersion,
+            lastSyncedAt = lastSyncedAt,
             message = lastSyncError,
         )
     }

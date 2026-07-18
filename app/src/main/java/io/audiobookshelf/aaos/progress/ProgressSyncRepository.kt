@@ -10,8 +10,6 @@ import io.audiobookshelf.aaos.absapi.RetryProfile
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestContext
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
-import io.audiobookshelf.aaos.auth.AuthRepository
-import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
@@ -21,13 +19,10 @@ import java.io.IOException
 
 class ProgressSyncRepository(
     private val database: CatalogDatabase,
-    private val authRepository: AuthRepository,
-    private val authStorage: AuthStorage,
+    private val authenticatedRequestRunner: AuthenticatedRequestRunner,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
     private val diagnosticEventLogger: DiagnosticEventLogger? = null,
 ) {
-    private val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
-
     suspend fun refreshInProgress(): Boolean = withContext(Dispatchers.IO) {
         try {
             authenticatedRequestRunner.execute { context ->
@@ -182,7 +177,6 @@ class ProgressSyncRepository(
             bookId = snapshot.bookId,
             currentTimeMs = snapshot.currentTimeMs,
             durationMs = durationMs,
-            progressFraction = calculateProgressFraction(snapshot.currentTimeMs, durationMs),
             isFinished = snapshot.isFinished,
             hideFromContinueListening = snapshot.isFinished,
             lastUpdateAt = now,
@@ -250,7 +244,6 @@ class ProgressSyncRepository(
             bookId = bookId,
             currentTimeMs = currentTimeMs,
             durationMs = durationMs,
-            progressFraction = progressFraction,
             isFinished = isFinished,
             hideFromContinueListening = hideFromContinueListening,
             lastUpdateAt = fallbackLastUpdate ?: lastUpdateAt,
@@ -298,11 +291,3 @@ internal data class ProgressUploadResult(
     val uploaded: Boolean,
     val sessionId: String?,
 )
-
-internal fun calculateProgressFraction(currentTimeMs: Long, durationMs: Long?): Double? {
-    return if (durationMs != null && durationMs > 0L) {
-        currentTimeMs.toDouble() / durationMs.toDouble()
-    } else {
-        null
-    }?.coerceIn(0.0, 1.0)
-}

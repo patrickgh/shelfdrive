@@ -8,9 +8,6 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "libraries")
 data class LibraryEntity(
     @PrimaryKey val id: String,
-    val name: String,
-    val mediaType: String,
-    val displayOrder: Int,
 )
 
 @Entity(
@@ -35,8 +32,6 @@ data class BookEntity(
     val coverPath: String?,
     val durationMs: Long?,
     val authorDisplay: String?,
-    val addedAt: Long?,
-    val updatedAt: Long,
     val isPlayable: Boolean,
 )
 
@@ -89,7 +84,6 @@ data class MediaProgressEntity(
     @PrimaryKey val bookId: String,
     val currentTimeMs: Long,
     val durationMs: Long?,
-    val progressFraction: Double?,
     val isFinished: Boolean,
     val hideFromContinueListening: Boolean,
     val lastUpdateAt: Long,
@@ -102,11 +96,9 @@ data class MediaProgressEntity(
 data class SyncStateEntity(
     @PrimaryKey val id: Int = 0,
     val status: String,
-    val lastFullSyncAt: Long?,
-    val lastDeltaSyncAt: Long?,
+    val lastSyncedAt: Long?,
     val lastSyncError: String?,
     val libraryCount: Int,
     val bookCount: Int,
     val authorCount: Int,
-    val serverVersion: String?,
 )

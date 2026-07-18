@@ -152,7 +152,6 @@ class AudiobookshelfApiClient(
                 add(
                     LibrarySummary(
                         id = library.optString("id"),
-                        name = library.optString("name"),
                         mediaType = library.optString("mediaType"),
                     ),
                 )
@@ -194,7 +193,6 @@ class AudiobookshelfApiClient(
                         durationMs = media.optDouble("duration").takeIf { !it.isNaN() }?.let { (it * 1000).toLong() },
                         authorDisplay = metadata.optString("authorName").takeIf { it.isNotBlank() },
                         authors = parseAuthors(metadata),
-                        addedAt = item.optLong("addedAt").takeIf { it > 0L },
                         isPlayable = item.optBoolean("isMissing").not() && item.optBoolean("isInvalid").not(),
                     ),
                 )
@@ -375,13 +373,10 @@ class AudiobookshelfApiClient(
         return buildList(items.length()) {
             for (index in 0 until items.length()) {
                 val item = items.optJSONObject(index) ?: continue
-                val media = item.optJSONObject("media")
-                val metadata = media?.optJSONObject("metadata")
                 add(
                     ProgressItemSummary(
                         bookId = item.optString("id"),
                         progressLastUpdateAt = parseAbsTimestamp(item.opt("progressLastUpdate")),
-                        title = metadata?.optString("title").takeIf { !it.isNullOrBlank() },
                     ),
                 )
             }
@@ -407,7 +402,6 @@ class AudiobookshelfApiClient(
             bookId = itemId,
             currentTimeMs = secondsToMillis(root.optDouble("currentTime")) ?: 0L,
             durationMs = secondsToMillis(root.optDouble("duration")),
-            progressFraction = root.optDouble("progress").takeIf { !it.isNaN() },
             isFinished = root.optBoolean("isFinished"),
             hideFromContinueListening = root.optBoolean("hideFromContinueListening"),
             startedAt = parseAbsTimestamp(root.opt("startedAt")),
@@ -460,7 +454,7 @@ class AudiobookshelfApiClient(
                     accessToken = accessToken,
                     refreshToken = null,
                     serverVersion = null,
-                    compatibilityWarning = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
+                    compatibilityWarningCode = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
                     isSupported = true,
                 ),
             )
@@ -494,7 +488,7 @@ class AudiobookshelfApiClient(
             accessToken = token,
             refreshToken = refreshToken,
             serverVersion = compatibility.serverVersion,
-            compatibilityWarning = compatibility.warningMessage,
+            compatibilityWarningCode = compatibility.warningCode,
             isSupported = compatibility.isSupported,
         )
     }
@@ -659,7 +653,7 @@ data class AuthenticatedSession(
     val accessToken: String?,
     val refreshToken: String?,
     val serverVersion: String?,
-    val compatibilityWarning: String?,
+    val compatibilityWarningCode: String?,
     val isSupported: Boolean,
 )
 
@@ -670,7 +664,6 @@ data class AuthorizationState(
 
 data class LibrarySummary(
     val id: String,
-    val name: String,
     val mediaType: String,
 )
 
@@ -685,7 +678,6 @@ data class BookSummary(
     val durationMs: Long?,
     val authorDisplay: String?,
     val authors: List<AuthorSummary>,
-    val addedAt: Long?,
     val isPlayable: Boolean,
 )
 
@@ -724,14 +716,12 @@ data class PlaybackTrackSummary(
 data class ProgressItemSummary(
     val bookId: String,
     val progressLastUpdateAt: Long?,
-    val title: String?,
 )
 
 data class MediaProgressSummary(
     val bookId: String,
     val currentTimeMs: Long,
     val durationMs: Long?,
-    val progressFraction: Double?,
     val isFinished: Boolean,
     val hideFromContinueListening: Boolean,
     val startedAt: Long?,

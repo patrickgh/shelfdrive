@@ -7,15 +7,11 @@ import androidx.media3.common.util.UnstableApi
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 
 object PlaybackSnapshotPolicy {
-    fun placeholderUri(): String {
-        return SILENT_WAV_DATA_URI
-    }
-
     @OptIn(UnstableApi::class)
     fun placeholderMediaItem(state: StoredPlaybackState): MediaItem {
         return MediaItem.Builder()
             .setMediaId(BrowseNodeId.Book(state.bookId).serialize())
-            .setUri(placeholderUri())
+            .setUri(SILENT_WAV_DATA_URI)
             .setMimeType("audio/wav")
             .setMediaMetadata(
                 MediaMetadata.Builder()
@@ -36,7 +32,6 @@ object PlaybackSnapshotPolicy {
     fun storedStateFromBrowseItem(
         bookId: String,
         item: MediaItem,
-        nowMs: Long,
     ): StoredPlaybackState {
         return StoredPlaybackState(
             bookId = bookId,
@@ -46,7 +41,6 @@ object PlaybackSnapshotPolicy {
             durationMs = item.mediaMetadata.durationMs,
             positionMs = 0L,
             playbackSpeed = 1f,
-            updatedAt = nowMs,
         )
     }
 

@@ -8,7 +8,6 @@ data class SyncSnapshot(
     val bookCount: Int = 0,
     val authorCount: Int = 0,
     val lastSyncedAt: Long? = null,
-    val serverVersion: String? = null,
     val message: String? = null,
 ) {
     fun toBundle(): Bundle {
@@ -20,7 +19,6 @@ data class SyncSnapshot(
             if (lastSyncedAt != null) {
                 putLong(KEY_LAST_SYNCED_AT, lastSyncedAt)
             }
-            putString(KEY_SERVER_VERSION, serverVersion)
             putString(KEY_MESSAGE, message)
         }
     }
@@ -31,7 +29,6 @@ data class SyncSnapshot(
         private const val KEY_BOOK_COUNT = "sync_book_count"
         private const val KEY_AUTHOR_COUNT = "sync_author_count"
         private const val KEY_LAST_SYNCED_AT = "sync_last_synced_at"
-        private const val KEY_SERVER_VERSION = "sync_server_version"
         private const val KEY_MESSAGE = "sync_message"
 
         fun fromBundle(bundle: Bundle?): SyncSnapshot? {
@@ -45,7 +42,6 @@ data class SyncSnapshot(
                 bookCount = bundle.getInt(KEY_BOOK_COUNT),
                 authorCount = bundle.getInt(KEY_AUTHOR_COUNT),
                 lastSyncedAt = if (hasSyncTime) bundle.getLong(KEY_LAST_SYNCED_AT) else null,
-                serverVersion = bundle.getString(KEY_SERVER_VERSION),
                 message = bundle.getString(KEY_MESSAGE),
             )
         }

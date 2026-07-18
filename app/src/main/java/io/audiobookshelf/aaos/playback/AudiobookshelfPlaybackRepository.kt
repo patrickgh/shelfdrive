@@ -6,8 +6,6 @@ import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.PlaybackSessionSummary
 import io.audiobookshelf.aaos.absapi.PlaybackTrackSummary
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
-import io.audiobookshelf.aaos.auth.AuthRepository
-import io.audiobookshelf.aaos.auth.AuthStorage
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
 import kotlinx.coroutines.Dispatchers
@@ -16,13 +14,10 @@ import java.io.IOException
 import java.util.Locale
 
 class AudiobookshelfPlaybackRepository(
-    private val authRepository: AuthRepository,
-    private val authStorage: AuthStorage,
+    private val authenticatedRequestRunner: AuthenticatedRequestRunner,
     private val database: CatalogDatabase,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
 ) {
-    private val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
-
     suspend fun resolveBook(bookId: String): ResolvedAudiobookPlaybackSession = withContext(Dispatchers.IO) {
         authenticatedRequestRunner.execute { context ->
             val resolved = resolveBookOnce(

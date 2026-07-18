@@ -35,13 +35,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private var serverUrlInput: String = ""
     private var usernameInput: String = ""
     private var passwordInput: String = ""
-    private var currentAuthSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
-    private var currentSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
-    private var currentCacheSnapshot: CacheSnapshot = CacheSnapshot()
-    private var currentDiagnosticsSnapshot: StartupDiagnosticsSnapshot = StartupDiagnosticsSnapshot()
-    private var currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot()
-    private var isCommandChannelReady: Boolean = false
-    private var isLoginInProgress: Boolean = false
+    private var state = SettingsState()
+    private val currentAuthSnapshot: AuthSnapshot get() = state.authSnapshot
+    private val currentSyncSnapshot: SyncSnapshot get() = state.syncSnapshot
+    private val currentCacheSnapshot: CacheSnapshot get() = state.cacheSnapshot
+    private val currentDiagnosticsSnapshot: StartupDiagnosticsSnapshot get() = state.diagnosticsSnapshot
+    private val currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot get() = state.diagnosticsUploadSnapshot
+    private val isCommandChannelReady: Boolean get() = state.commandChannelReady
+    private val isLoginInProgress: Boolean get() = state.loginInProgress
     private var consecutiveVersionClicks: Int = 0
     private var areDiagnosticsVisible: Boolean = false
 
@@ -87,30 +88,18 @@ class SettingsFragment : PreferenceFragmentCompat() {
         return super.onPreferenceTreeClick(preference)
     }
 
-    fun renderState(
-        commandChannelReady: Boolean,
-        authSnapshot: AuthSnapshot,
-        syncSnapshot: SyncSnapshot,
-        cacheSnapshot: CacheSnapshot,
-        diagnosticsSnapshot: StartupDiagnosticsSnapshot,
-        diagnosticsUploadSnapshot: DiagnosticsUploadSnapshot,
-        loginInProgress: Boolean,
-    ) {
-        isCommandChannelReady = commandChannelReady
-        isLoginInProgress = loginInProgress
-        currentAuthSnapshot = authSnapshot
-        currentSyncSnapshot = syncSnapshot
-        currentCacheSnapshot = cacheSnapshot
-        currentDiagnosticsSnapshot = diagnosticsSnapshot
-        currentDiagnosticsUploadSnapshot = diagnosticsUploadSnapshot
-
-        if (!authSnapshot.baseUrl.isNullOrBlank()) {
-            serverUrlInput = authSnapshot.baseUrl
+    internal fun renderState(newState: SettingsState) {
+        state = newState
+        if (!newState.authSnapshot.baseUrl.isNullOrBlank()) {
+            serverUrlInput = newState.authSnapshot.baseUrl
         }
-        if (!authSnapshot.username.isNullOrBlank()) {
-            usernameInput = authSnapshot.username
+        if (!newState.authSnapshot.username.isNullOrBlank()) {
+            usernameInput = newState.authSnapshot.username
         }
-        if (authSnapshot.status == AuthStatus.AUTHENTICATED || authSnapshot.status == AuthStatus.LOGGED_OUT) {
+        if (
+            newState.authSnapshot.status == AuthStatus.AUTHENTICATED ||
+            newState.authSnapshot.status == AuthStatus.LOGGED_OUT
+        ) {
             passwordInput = ""
         }
 
@@ -119,16 +108,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun renderActivityState() {
-        val host = activity as? SettingsActivity
-        renderState(
-            commandChannelReady = host?.isCommandChannelReady() == true,
-            authSnapshot = host?.currentAuthSnapshot() ?: AuthSnapshot(status = AuthStatus.LOGGED_OUT),
-            syncSnapshot = host?.currentSyncSnapshot() ?: SyncSnapshot(status = SyncStatus.IDLE),
-            cacheSnapshot = host?.currentCacheSnapshot() ?: CacheSnapshot(),
-            diagnosticsSnapshot = host?.currentDiagnosticsSnapshot() ?: StartupDiagnosticsSnapshot(),
-            diagnosticsUploadSnapshot = host?.currentDiagnosticsUploadSnapshot() ?: DiagnosticsUploadSnapshot(),
-            loginInProgress = host?.isLoginInProgress() == true,
-        )
+        val host = activity as? SettingsActivity ?: return
+        renderState(host.currentState())
     }
 
     private fun restoreDrafts(savedInstanceState: Bundle?) {
@@ -205,7 +186,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<EditTextPreference>(KEY_DIAGNOSTICS_UPLOAD_URL)?.apply {
-            text = (activity as? SettingsActivity)?.currentDiagnosticsUploadSnapshot()?.uploadUrl.orEmpty()
+            text = currentDiagnosticsUploadSnapshot.uploadUrl
             setOnBindEditTextListener { editText ->
                 editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
                 styleEditText(editText)
@@ -393,11 +374,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val parts = mutableListOf(base)
         currentAuthSnapshot.statusMessage
             ?.takeIf { it.isNotBlank() }
-            ?.takeUnless { isServerVersionVerificationWarning(it) }
+            ?.takeUnless { it == UserVisibleStatus.SERVER_VERSION_UNKNOWN }
             ?.let { parts += localizeStatusMessage(it) }
         currentAuthSnapshot.serverVersion
             ?.takeIf { it.isNotBlank() }
-            ?.takeUnless { isServerVersionVerificationWarning(it) }
             ?.let { version ->
                 parts += getString(R.string.settings_server_version_summary, version)
             }
@@ -484,13 +464,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun localizeStatusMessage(message: String): String {
-        Regex("""Serverversion '(.+)' konnte nicht sauber ausgewertet werden\.""")
-            .matchEntire(message)
-            ?.let { return getString(R.string.status_server_version_unparseable, it.groupValues[1]) }
-        Regex("""Audiobookshelf (.+) wird in v1 nicht unterstützt\. Benötigt wird mindestens 2\.31\.0\.""")
-            .matchEntire(message)
-            ?.let { return getString(R.string.status_server_version_unsupported, it.groupValues[1]) }
-
         return when (message) {
             UserVisibleStatus.SERVER_UNREACHABLE ->
                 getString(R.string.status_server_unreachable)
@@ -500,34 +473,36 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.status_session_expired)
             UserVisibleStatus.LOGIN_FIELDS_REQUIRED ->
                 getString(R.string.status_login_fields_required)
-            UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN,
-            "Login-Antwort enthaelt kein Zugriffstoken." ->
+            UserVisibleStatus.LOGIN_MISSING_ACCESS_TOKEN ->
                 getString(R.string.status_login_missing_access_token)
             UserVisibleStatus.REFRESH_MISSING_ACCESS_TOKEN ->
                 getString(R.string.status_refresh_missing_access_token)
             UserVisibleStatus.SERVER_UNREACHABLE_OR_INVALID ->
                 getString(R.string.status_server_unreachable_or_invalid)
-            "Server-URL ist ungueltig." ->
+            UserVisibleStatus.SERVER_VERSION_UNPARSEABLE ->
+                getString(
+                    R.string.status_server_version_unparseable,
+                    currentAuthSnapshot.serverVersion.orEmpty(),
+                )
+            UserVisibleStatus.SERVER_VERSION_UNSUPPORTED ->
+                getString(
+                    R.string.status_server_version_unsupported,
+                    currentAuthSnapshot.serverVersion.orEmpty(),
+                )
+            UserVisibleStatus.SERVER_URL_INVALID ->
                 getString(R.string.status_server_url_invalid)
-            "Server-URL muss mit https:// beginnen.",
-            "Server-URL muss mit https:// oder http:// beginnen." ->
+            UserVisibleStatus.SERVER_URL_SCHEME_REQUIRED ->
                 getString(R.string.status_server_url_scheme_required)
-            "Server-URL enthaelt keinen Host." ->
+            UserVisibleStatus.SERVER_URL_HOST_REQUIRED ->
                 getString(R.string.status_server_url_host_required)
-            "Server-URL darf keine Zugangsdaten enthalten." ->
+            UserVisibleStatus.SERVER_URL_CREDENTIALS_FORBIDDEN ->
                 getString(R.string.status_server_url_credentials_forbidden)
-            "Server-URL darf keine Query-Parameter oder Fragmente enthalten." ->
+            UserVisibleStatus.SERVER_URL_QUERY_FORBIDDEN ->
                 getString(R.string.status_server_url_query_forbidden)
-            "HTTP ist nicht erlaubt. Bitte HTTPS verwenden.",
-            "HTTP ist nur fuer lokale oder private Server erlaubt. Fuer oeffentliche Server bitte HTTPS verwenden." ->
+            UserVisibleStatus.SERVER_URL_PUBLIC_HTTP_FORBIDDEN ->
                 getString(R.string.status_server_url_public_http_forbidden)
             else -> message
         }
-    }
-
-    private fun isServerVersionVerificationWarning(message: String): Boolean {
-        return message == UserVisibleStatus.SERVER_VERSION_UNKNOWN ||
-            message == "Server version could not be verified."
     }
 
     private fun buildCacheSummary(): String {

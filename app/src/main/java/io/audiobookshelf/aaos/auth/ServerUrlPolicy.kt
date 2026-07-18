@@ -1,5 +1,6 @@
 package io.audiobookshelf.aaos.auth
 
+import io.audiobookshelf.aaos.status.UserVisibleStatus
 import java.net.URI
 
 object ServerUrlPolicy {
@@ -8,28 +9,28 @@ object ServerUrlPolicy {
             ?: return ServerUrlValidation()
 
         val uri = runCatching { URI(normalizedUrl) }.getOrNull()
-            ?: return ServerUrlValidation(errorMessage = "Server-URL ist ungueltig.")
+            ?: return ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_INVALID)
         val scheme = uri.scheme?.lowercase()
-            ?: return ServerUrlValidation(errorMessage = "Server-URL muss mit https:// beginnen.")
+            ?: return ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_SCHEME_REQUIRED)
         uri.host
-            ?: return ServerUrlValidation(errorMessage = "Server-URL enthaelt keinen Host.")
+            ?: return ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_HOST_REQUIRED)
 
         if (!uri.userInfo.isNullOrBlank()) {
-            return ServerUrlValidation(errorMessage = "Server-URL darf keine Zugangsdaten enthalten.")
+            return ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_CREDENTIALS_FORBIDDEN)
         }
         if (!uri.query.isNullOrBlank() || !uri.fragment.isNullOrBlank()) {
-            return ServerUrlValidation(errorMessage = "Server-URL darf keine Query-Parameter oder Fragmente enthalten.")
+            return ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_QUERY_FORBIDDEN)
         }
 
         return when {
             scheme == "https" -> ServerUrlValidation(normalizedUrl = normalizedUrl)
-            scheme == "http" -> ServerUrlValidation(errorMessage = "HTTP ist nicht erlaubt. Bitte HTTPS verwenden.")
-            else -> ServerUrlValidation(errorMessage = "Server-URL muss mit https:// beginnen.")
+            scheme == "http" -> ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_PUBLIC_HTTP_FORBIDDEN)
+            else -> ServerUrlValidation(errorCode = UserVisibleStatus.SERVER_URL_SCHEME_REQUIRED)
         }
     }
 }
 
 data class ServerUrlValidation(
     val normalizedUrl: String? = null,
-    val errorMessage: String? = null,
+    val errorCode: String? = null,
 )

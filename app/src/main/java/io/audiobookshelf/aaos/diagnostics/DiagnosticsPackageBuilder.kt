@@ -86,7 +86,6 @@ class DiagnosticsPackageBuilder(
                     put("bookCount", syncSnapshot.bookCount)
                     put("authorCount", syncSnapshot.authorCount)
                     put("lastSyncedAt", syncSnapshot.lastSyncedAt)
-                    put("serverVersion", syncSnapshot.serverVersion)
                     put("message", syncSnapshot.message)
                 },
             )

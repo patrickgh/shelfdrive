@@ -78,12 +78,12 @@ class AuthRepository(
         val username = requestedUsername?.trim().takeUnless { it.isNullOrBlank() } ?: stored.username?.trim()
         val password = requestedPassword?.takeUnless { it.isNullOrBlank() } ?: stored.password
 
-        if (requestedUrlValidation.errorMessage != null || (storedUrlValidation.errorMessage != null && baseUrl == null)) {
+        if (requestedUrlValidation.errorCode != null || (storedUrlValidation.errorCode != null && baseUrl == null)) {
             return@withContext AuthSnapshot(
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
-                statusMessage = requestedUrlValidation.errorMessage ?: storedUrlValidation.errorMessage,
+                statusMessage = requestedUrlValidation.errorCode ?: storedUrlValidation.errorCode,
                 hasStoredPassword = !stored.password.isNullOrBlank(),
             )
         }
@@ -106,7 +106,7 @@ class AuthRepository(
                     baseUrl = baseUrl,
                     username = session.username,
                     serverVersion = session.serverVersion,
-                    statusMessage = session.compatibilityWarning,
+                    statusMessage = session.compatibilityWarningCode,
                     hasStoredPassword = !stored.password.isNullOrBlank(),
                 )
             }
@@ -161,6 +161,19 @@ class AuthRepository(
     suspend fun logout(): AuthSnapshot = withContext(Dispatchers.IO) {
         storage.clear()
         AuthSnapshot(status = AuthStatus.LOGGED_OUT)
+    }
+
+    suspend fun recoverAfterUnauthorized(): AuthSnapshot = withContext(Dispatchers.IO) {
+        val stored = storage.load()
+        val baseUrl = ServerUrlPolicy.validate(stored.baseUrl).normalizedUrl
+        val username = stored.username?.trim().orEmpty()
+        if (baseUrl.isNullOrBlank() || username.isBlank()) {
+            return@withContext AuthSnapshot(
+                status = AuthStatus.LOGGED_OUT,
+                hasStoredPassword = !stored.password.isNullOrBlank(),
+            )
+        }
+        refreshOrReauthenticate(stored, baseUrl, username)
     }
 
     private suspend fun refreshOrReauthenticate(
@@ -234,7 +247,7 @@ class AuthRepository(
                 baseUrl,
                 session.username,
                 session.serverVersion,
-                session.compatibilityWarning,
+                session.compatibilityWarningCode,
             )
         }
         val accessToken = session.accessToken?.takeIf { it.isNotBlank() }
@@ -301,7 +314,7 @@ class AuthRepository(
             baseUrl = baseUrl,
             username = username,
             serverVersion = session?.serverVersion,
-            statusMessage = session?.compatibilityWarning,
+            statusMessage = session?.compatibilityWarningCode,
             hasStoredPassword = hasStoredPassword,
         )
     }

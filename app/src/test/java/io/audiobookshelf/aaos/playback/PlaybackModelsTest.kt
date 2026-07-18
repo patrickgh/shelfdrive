@@ -6,7 +6,7 @@ import org.junit.Test
 class PlaybackModelsTest {
     @Test
     fun `builds offline playback directly from stored queue regardless of snapshot age`() {
-        val state = storedState(updatedAt = 1L).copy(
+        val state = storedState().copy(
             queue = listOf(
                 PlaybackTrack("one", "One", "https://example.com/one.mp3", "audio/mpeg", 60_000L, 0L),
                 PlaybackTrack("two", "Two", "https://example.com/two.mp3", "audio/mpeg", 60_000L, 60_000L),
@@ -25,7 +25,6 @@ class PlaybackModelsTest {
         title: String? = "Book",
         author: String? = "Author",
         durationMs: Long? = 120_000L,
-        updatedAt: Long = 10_000L,
     ): StoredPlaybackState {
         return StoredPlaybackState(
             bookId = "book-1",
@@ -34,7 +33,6 @@ class PlaybackModelsTest {
             durationMs = durationMs,
             positionMs = 42_000L,
             playbackSpeed = 1.25f,
-            updatedAt = updatedAt,
         )
     }
 }

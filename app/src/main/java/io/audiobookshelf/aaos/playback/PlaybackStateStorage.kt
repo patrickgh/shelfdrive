@@ -29,7 +29,6 @@ class PlaybackStateStorage(context: Context) {
             playbackSpeed = sharedPreferences.getFloat(KEY_PLAYBACK_SPEED, 1f)
                 .takeIf { it.isFinite() && it > 0f }
                 ?: 1f,
-            updatedAt = sharedPreferences.getLong(KEY_UPDATED_AT, 0L),
         )
     }
 
@@ -43,8 +42,6 @@ class PlaybackStateStorage(context: Context) {
             putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
             putString(KEY_QUEUE, encodeQueue(state.queue))
             putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
-            putLong(KEY_UPDATED_AT, state.updatedAt)
-            remove(KEY_LAST_APPLIED_SERVER_UPDATE_AT)
         }
     }
 
@@ -114,8 +111,6 @@ class PlaybackStateStorage(context: Context) {
         private const val KEY_POSITION_MS = "position_ms"
         private const val KEY_QUEUE = "queue"
         private const val KEY_PLAYBACK_SPEED = "playback_speed"
-        private const val KEY_UPDATED_AT = "updated_at"
-        private const val KEY_LAST_APPLIED_SERVER_UPDATE_AT = "last_applied_server_update_at"
         private const val UNKNOWN_DURATION_MS = -1L
     }
 }
@@ -129,5 +124,4 @@ data class StoredPlaybackState(
     val positionMs: Long,
     val queue: List<PlaybackTrack> = emptyList(),
     val playbackSpeed: Float,
-    val updatedAt: Long,
 )

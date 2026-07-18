@@ -56,7 +56,6 @@ class ProgressConflictPolicyTest {
         bookId = "book",
         currentTimeMs = currentTimeMs,
         durationMs = 100_000L,
-        progressFraction = currentTimeMs / 100_000.0,
         isFinished = isFinished,
         hideFromContinueListening = false,
         lastUpdateAt = 5_000L,

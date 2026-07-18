@@ -19,9 +19,6 @@ interface LibraryDao {
 
     @Query("DELETE FROM libraries")
     suspend fun clearAll()
-
-    @Query("SELECT COUNT(*) FROM libraries")
-    suspend fun count(): Int
 }
 
 @Dao
@@ -37,9 +34,6 @@ interface BookDao {
 
     @Query("DELETE FROM books")
     suspend fun clearAll()
-
-    @Query("SELECT COUNT(*) FROM books")
-    suspend fun count(): Int
 
     @Query("SELECT id FROM books WHERE id IN (:bookIds)")
     suspend fun getExistingIds(bookIds: List<String>): List<String>
@@ -103,9 +97,6 @@ interface AuthorDao {
 
     @Query("DELETE FROM authors")
     suspend fun clearAll()
-
-    @Query("SELECT COUNT(*) FROM authors")
-    suspend fun count(): Int
 
     @Query(
         """

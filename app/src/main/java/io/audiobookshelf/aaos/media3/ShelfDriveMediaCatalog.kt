@@ -11,8 +11,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaLibraryService.LibraryParams
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
-import io.audiobookshelf.aaos.auth.AuthSnapshot
-import io.audiobookshelf.aaos.auth.AuthStatus
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository.BrowseCollection
@@ -26,9 +24,7 @@ internal class ShelfDriveMediaCatalog(
     private val context: Context,
     private val browseRepository: CatalogBrowseRepository,
 ) {
-    var authSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
     var syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
-    var hasStoredLoginCredentials: Boolean = false
 
     fun buildRootItem(): MediaItem {
         return buildBrowsableItem(
@@ -89,10 +85,6 @@ internal class ShelfDriveMediaCatalog(
     }
 
     suspend fun loadSearchResults(query: String): List<MediaItem> {
-        if (!hasStoredLoginCredentials) {
-            return emptyList()
-        }
-
         val searchQuery = query.trim()
         val books = if (searchQuery.isBlank()) {
             browseRepository.getRecentBooks()
@@ -152,14 +144,11 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadRecentItems(): List<MediaItem> {
-        if (!hasStoredLoginCredentials) {
-            return emptyList()
-        }
         val recentBooks = browseRepository.getRecentBooks()
         if (recentBooks.isNotEmpty()) {
             return recentBooks.map(::buildPlayableBookItem)
         }
-        if (hasStoredLoginCredentials && syncSnapshot.status == SyncStatus.RUNNING && syncSnapshot.bookCount == 0) {
+        if (syncSnapshot.status == SyncStatus.RUNNING && syncSnapshot.bookCount == 0) {
             return listOf(
                 buildStateItem(
                     mediaId = "recent:sync_running",
@@ -168,7 +157,7 @@ internal class ShelfDriveMediaCatalog(
                 ),
             )
         }
-        if (hasStoredLoginCredentials && syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
+        if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
             return listOf(buildConnectionProblemItem("recent:sync_failed"))
         }
         return listOf(
@@ -181,9 +170,6 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadBooksItems(): List<MediaItem> {
-        if (!hasStoredLoginCredentials) {
-            return emptyList()
-        }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.bookCount == 0) {
             return listOf(buildConnectionProblemItem("books:sync_failed"))
         }
@@ -215,9 +201,6 @@ internal class ShelfDriveMediaCatalog(
     }
 
     private suspend fun loadAuthorsItems(): List<MediaItem> {
-        if (!hasStoredLoginCredentials) {
-            return emptyList()
-        }
         if (syncSnapshot.status == SyncStatus.FAILED && syncSnapshot.authorCount == 0) {
             return listOf(buildConnectionProblemItem("authors:sync_failed"))
         }

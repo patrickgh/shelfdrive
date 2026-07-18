@@ -35,29 +35,25 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+internal data class SettingsState(
+    val authSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT),
+    val syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE),
+    val cacheSnapshot: CacheSnapshot = CacheSnapshot(),
+    val diagnosticsSnapshot: StartupDiagnosticsSnapshot = StartupDiagnosticsSnapshot(),
+    val diagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot(),
+    val commandChannelReady: Boolean = false,
+    val loginInProgress: Boolean = false,
+)
+
 class SettingsActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var mediaController: MediaController? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private var currentAuthSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT)
-    private var currentSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
-    private var currentCacheSnapshot: CacheSnapshot = CacheSnapshot()
-    private var currentDiagnosticsSnapshot: StartupDiagnosticsSnapshot = StartupDiagnosticsSnapshot()
-    private var currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot()
-    private var pendingAutoSyncAfterLogin: Boolean = false
-    private var loginInProgress: Boolean = false
+    private var state = SettingsState()
     private var isStarted: Boolean = false
     private var reconnectAttempt: Int = 0
     private lateinit var diagnosticEventLogger: DiagnosticEventLogger
-    private val cacheRefresh = object : Runnable {
-        override fun run() {
-            if (isStarted && mediaController != null) {
-                requestCacheState()
-                mainHandler.postDelayed(this, CACHE_REFRESH_INTERVAL_MS)
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         delegate.setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -81,15 +77,12 @@ class SettingsActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isStarted = true
-        currentDiagnosticsSnapshot = StartupDiagnosticsStorage(this).load()
         val diagnosticsUploadStorage = DiagnosticsUploadStorage(this)
-        currentDiagnosticsUploadSnapshot = diagnosticsUploadStorage.load()
-        if (currentDiagnosticsUploadSnapshot.lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
+        if (diagnosticsUploadStorage.load().lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
             diagnosticsUploadStorage.recordUploadFinished(
                 DiagnosticsUploadStatus.FAILED,
                 "Previous upload was interrupted.",
             )
-            currentDiagnosticsUploadSnapshot = diagnosticsUploadStorage.load()
         }
         diagnosticEventLogger.record("settings_started")
         renderState()
@@ -115,16 +108,14 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     internal fun performLogin(serverUrl: String?, username: String?, password: String?) {
-        if (loginInProgress) {
+        if (state.loginInProgress) {
             return
         }
         if (mediaController == null) {
-            loginInProgress = false
             renderState()
             return
         }
-        loginInProgress = true
-        pendingAutoSyncAfterLogin = true
+        state = state.copy(loginInProgress = true)
         renderState()
         val args = Bundle().apply {
             putString(AuthCommands.EXTRA_SERVER_URL, serverUrl)
@@ -139,40 +130,45 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     internal fun performLogout() {
-        loginInProgress = false
-        pendingAutoSyncAfterLogin = false
+        state = state.copy(loginInProgress = false)
         sendCommand(AuthCommands.CMD_LOGOUT, null, ::handleAuthResult)
     }
 
     internal fun performResync() {
-        currentSyncSnapshot = currentSyncSnapshot.copy(status = SyncStatus.RUNNING, message = null)
+        val previousSyncSnapshot = state.syncSnapshot
+        state = state.copy(
+            syncSnapshot = previousSyncSnapshot.copy(status = SyncStatus.RUNNING, message = null),
+        )
         renderState()
-        sendCommand(SyncCommands.CMD_SYNC_NOW, null, ::handleSyncResult)
+        sendCommand(
+            command = SyncCommands.CMD_SYNC_NOW,
+            extras = null,
+            onResult = ::handleSyncResult,
+            onFailure = {
+                state = state.copy(syncSnapshot = previousSyncSnapshot)
+                renderState()
+            },
+        )
     }
 
     internal fun performClearCache() {
-        currentCacheSnapshot = CacheSnapshot(totalBytes = 0L, clearedAt = System.currentTimeMillis())
-        currentSyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
-        renderState()
         sendCommand(CacheCommands.CMD_CLEAR_CACHE, null, ::handleClearCacheResult)
     }
 
     internal fun updateDiagnosticsUploadUrl(uploadUrl: String) {
         DiagnosticsUploadStorage(this).saveUploadUrl(uploadUrl)
-        currentDiagnosticsUploadSnapshot = DiagnosticsUploadStorage(this).load()
         renderState()
     }
 
     internal fun performDiagnosticsUpload() {
         val storage = DiagnosticsUploadStorage(this)
         val uploadUrl = storage.load().uploadUrl
-        if (uploadUrl.isBlank() || currentDiagnosticsUploadSnapshot.lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
+        if (uploadUrl.isBlank() || state.diagnosticsUploadSnapshot.lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
             renderState()
             return
         }
 
         storage.recordUploadStarted()
-        currentDiagnosticsUploadSnapshot = storage.load()
         renderState()
 
         activityScope.launch {
@@ -181,9 +177,9 @@ class SettingsActivity : AppCompatActivity() {
                 val startupSnapshot = StartupDiagnosticsStorage(this@SettingsActivity).load()
                 val uploadSnapshot = storage.load()
                 val packageFile = DiagnosticsPackageBuilder(this@SettingsActivity).build(
-                    authSnapshot = currentAuthSnapshot,
-                    syncSnapshot = currentSyncSnapshot,
-                    cacheSnapshot = currentCacheSnapshot,
+                    authSnapshot = state.authSnapshot,
+                    syncSnapshot = state.syncSnapshot,
+                    cacheSnapshot = state.cacheSnapshot,
                     startupSnapshot = startupSnapshot,
                     uploadSnapshot = uploadSnapshot,
                 )
@@ -207,25 +203,11 @@ class SettingsActivity : AppCompatActivity() {
                     ),
                 )
             }
-            currentDiagnosticsSnapshot = StartupDiagnosticsStorage(this@SettingsActivity).load()
-            currentDiagnosticsUploadSnapshot = storage.load()
             renderState()
         }
     }
 
-    internal fun currentAuthSnapshot(): AuthSnapshot = currentAuthSnapshot
-
-    internal fun currentSyncSnapshot(): SyncSnapshot = currentSyncSnapshot
-
-    internal fun currentCacheSnapshot(): CacheSnapshot = currentCacheSnapshot
-
-    internal fun currentDiagnosticsSnapshot(): StartupDiagnosticsSnapshot = currentDiagnosticsSnapshot
-
-    internal fun currentDiagnosticsUploadSnapshot(): DiagnosticsUploadSnapshot = currentDiagnosticsUploadSnapshot
-
-    internal fun isCommandChannelReady(): Boolean = mediaController != null
-
-    internal fun isLoginInProgress(): Boolean = loginInProgress
+    internal fun currentState(): SettingsState = state.copy(commandChannelReady = mediaController != null)
 
     private fun requestAuthState() {
         sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult)
@@ -239,10 +221,16 @@ class SettingsActivity : AppCompatActivity() {
         sendCommand(CacheCommands.CMD_GET_CACHE_STATE, null, ::handleCacheResult)
     }
 
-    private fun sendCommand(command: String, extras: Bundle?, onResult: (Bundle?) -> Unit) {
+    private fun sendCommand(
+        command: String,
+        extras: Bundle?,
+        onResult: (Bundle?) -> Unit,
+        onFailure: () -> Unit = {},
+    ) {
         val controller = mediaController
         if (controller == null) {
             diagnosticEventLogger.record("settings_command_without_controller", mapOf("command" to command))
+            onFailure()
             connectMediaController()
             renderState()
             return
@@ -265,6 +253,8 @@ class SettingsActivity : AppCompatActivity() {
                     )
                     onResult(result.extras)
                 }.onFailure { exception ->
+                    state = state.copy(loginInProgress = false)
+                    onFailure()
                     diagnosticEventLogger.record(
                         "settings_command_failed",
                         mapOf(
@@ -307,14 +297,11 @@ class SettingsActivity : AppCompatActivity() {
                     diagnosticEventLogger.record("settings_controller_connect_success")
                     renderState()
                     requestAuthState()
-                    requestSyncState()
                     requestCacheState()
-                    mainHandler.removeCallbacks(cacheRefresh)
-                    mainHandler.postDelayed(cacheRefresh, CACHE_REFRESH_INTERVAL_MS)
                 }.onFailure { exception ->
                     controllerFuture = null
                     mediaController = null
-                    loginInProgress = false
+                    state = state.copy(loginInProgress = false)
                     diagnosticEventLogger.record(
                         "settings_controller_connect_failed",
                         mapOf(
@@ -352,20 +339,20 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun handleAuthResult(resultData: Bundle?) {
-        val snapshot = AuthSnapshot.fromBundle(resultData)
-        if (snapshot == null) {
-            loginInProgress = false
+        val authSnapshot = AuthSnapshot.fromBundle(resultData)
+        if (authSnapshot == null) {
+            state = state.copy(loginInProgress = false)
             renderState()
             return
         }
-        loginInProgress = false
-        currentAuthSnapshot = snapshot
+        val syncSnapshot = SyncSnapshot.fromBundle(resultData)
+        state = state.copy(
+            authSnapshot = authSnapshot,
+            syncSnapshot = syncSnapshot ?: state.syncSnapshot,
+            loginInProgress = false,
+        )
         renderState()
-        if (snapshot.isAuthenticated && pendingAutoSyncAfterLogin) {
-            pendingAutoSyncAfterLogin = false
-            performResync()
-        } else {
-            pendingAutoSyncAfterLogin = false
+        if (syncSnapshot == null) {
             requestSyncState()
         }
         requestCacheState()
@@ -373,42 +360,39 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun handleSyncResult(resultData: Bundle?) {
         val snapshot = SyncSnapshot.fromBundle(resultData) ?: return
-        currentSyncSnapshot = snapshot
+        state = state.copy(syncSnapshot = snapshot)
         renderState()
         requestCacheState()
     }
 
     private fun handleCacheResult(resultData: Bundle?) {
         val snapshot = CacheSnapshot.fromBundle(resultData) ?: return
-        currentCacheSnapshot = snapshot
+        state = state.copy(cacheSnapshot = snapshot)
         renderState()
     }
 
     private fun handleClearCacheResult(resultData: Bundle?) {
         val snapshot = CacheSnapshot.fromBundle(resultData) ?: return
-        currentCacheSnapshot = snapshot
-        currentSyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
+        state = state.copy(
+            cacheSnapshot = snapshot,
+            syncSnapshot = SyncSnapshot(status = SyncStatus.IDLE),
+        )
         renderState()
     }
 
     private fun renderState() {
-        currentDiagnosticsSnapshot = StartupDiagnosticsStorage(this).load()
-        currentDiagnosticsUploadSnapshot = DiagnosticsUploadStorage(this).load()
-        (supportFragmentManager.findFragmentById(R.id.settings_container) as? SettingsFragment)?.renderState(
-            commandChannelReady = isCommandChannelReady(),
-            authSnapshot = currentAuthSnapshot,
-            syncSnapshot = currentSyncSnapshot,
-            cacheSnapshot = currentCacheSnapshot,
-            diagnosticsSnapshot = currentDiagnosticsSnapshot,
-            diagnosticsUploadSnapshot = currentDiagnosticsUploadSnapshot,
-            loginInProgress = loginInProgress,
+        state = state.copy(
+            diagnosticsSnapshot = StartupDiagnosticsStorage(this).load(),
+            diagnosticsUploadSnapshot = DiagnosticsUploadStorage(this).load(),
+            commandChannelReady = mediaController != null,
         )
+        (supportFragmentManager.findFragmentById(R.id.settings_container) as? SettingsFragment)
+            ?.renderState(state)
     }
 
     companion object {
         private const val RECONNECT_INITIAL_DELAY_MS = 1_000L
         private const val RECONNECT_MAX_DELAY_MS = 30_000L
         private const val RECONNECT_MAX_SHIFT = 5
-        private const val CACHE_REFRESH_INTERVAL_MS = 5_000L
     }
 }

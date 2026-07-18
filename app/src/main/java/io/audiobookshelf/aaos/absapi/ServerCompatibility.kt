@@ -11,7 +11,7 @@ object ServerCompatibility {
             return CompatibilityReport(
                 serverVersion = null,
                 isSupported = true,
-                warningMessage = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
+                warningCode = UserVisibleStatus.SERVER_VERSION_UNKNOWN,
             )
         }
 
@@ -19,21 +19,21 @@ object ServerCompatibility {
             ?: return CompatibilityReport(
                 serverVersion = serverVersion,
                 isSupported = true,
-                warningMessage = "Serverversion '$serverVersion' konnte nicht sauber ausgewertet werden.",
+                warningCode = UserVisibleStatus.SERVER_VERSION_UNPARSEABLE,
             )
 
         if (parsedVersion < minimumSupportedVersion) {
             return CompatibilityReport(
                 serverVersion = serverVersion,
                 isSupported = false,
-                warningMessage = "Audiobookshelf $serverVersion wird in v1 nicht unterstützt. Benötigt wird mindestens 2.31.0.",
+                warningCode = UserVisibleStatus.SERVER_VERSION_UNSUPPORTED,
             )
         }
 
         return CompatibilityReport(
             serverVersion = serverVersion,
             isSupported = true,
-            warningMessage = null,
+            warningCode = null,
         )
     }
 }
@@ -41,7 +41,7 @@ object ServerCompatibility {
 data class CompatibilityReport(
     val serverVersion: String?,
     val isSupported: Boolean,
-    val warningMessage: String?,
+    val warningCode: String?,
 )
 
 data class ServerVersion(

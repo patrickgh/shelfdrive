@@ -3,6 +3,8 @@ package io.audiobookshelf.aaos.auth
 import io.audiobookshelf.aaos.absapi.ApiException
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -10,6 +12,8 @@ class AuthenticatedRequestRunner(
     private val storage: AuthStorage,
     private val authRepository: AuthRepository,
 ) {
+    private val recoveryMutex = Mutex()
+
     suspend fun <T> execute(block: suspend (AuthenticatedRequestContext) -> T): T = withContext(Dispatchers.IO) {
         val initialContext = loadContextOrRecover()
         try {
@@ -19,7 +23,7 @@ class AuthenticatedRequestRunner(
                 throw exception
             }
 
-            val refreshedContext = refreshContext(exception)
+            val refreshedContext = refreshContext(initialContext, exception)
             try {
                 block(refreshedContext)
             } catch (secondException: ApiException) {
@@ -37,30 +41,35 @@ class AuthenticatedRequestRunner(
     private suspend fun loadContextOrRecover(): AuthenticatedRequestContext {
         loadContextOrNull()?.let { return it }
 
-        val snapshot = authRepository.bootstrap()
-        if (!snapshot.isAuthenticated) {
-            throw AuthenticationRequiredException(
-                snapshot.statusMessage ?: UserVisibleStatus.NO_ACTIVE_SESSION,
-            )
+        return recoveryMutex.withLock {
+            loadContextOrNull()?.let { return@withLock it }
+            val snapshot = authRepository.bootstrap()
+            if (!snapshot.isAuthenticated) {
+                throw AuthenticationRequiredException(
+                    snapshot.statusMessage ?: UserVisibleStatus.NO_ACTIVE_SESSION,
+                )
+            }
+            loadContextOrNull()
+                ?: throw AuthenticationRequiredException(UserVisibleStatus.NO_ACTIVE_SESSION)
         }
-        return loadContextOrNull()
-            ?: throw AuthenticationRequiredException(UserVisibleStatus.NO_ACTIVE_SESSION)
     }
 
-    private suspend fun refreshContext(cause: ApiException): AuthenticatedRequestContext {
-        val snapshot = authRepository.login(
-            requestedBaseUrl = null,
-            requestedUsername = null,
-            requestedPassword = null,
-        ).takeIf { it.isAuthenticated }
-            ?: authRepository.bootstrap()
+    private suspend fun refreshContext(
+        failedContext: AuthenticatedRequestContext,
+        cause: ApiException,
+    ): AuthenticatedRequestContext = recoveryMutex.withLock {
+        loadContextOrNull()
+            ?.takeIf { it.accessToken != failedContext.accessToken }
+            ?.let { return@withLock it }
+
+        val snapshot = authRepository.recoverAfterUnauthorized()
         if (!snapshot.isAuthenticated) {
             throw AuthenticationRequiredException(
                 message = snapshot.statusMessage ?: UserVisibleStatus.SESSION_EXPIRED,
                 cause = cause,
             )
         }
-        return loadContextOrNull()
+        loadContextOrNull()
             ?: throw AuthenticationRequiredException(
                 message = UserVisibleStatus.NO_ACTIVE_SESSION,
                 cause = cause,
@@ -70,8 +79,8 @@ class AuthenticatedRequestRunner(
     private fun loadContextOrNull(): AuthenticatedRequestContext? {
         val stored = storage.load()
         val validation = ServerUrlPolicy.validate(stored.baseUrl)
-        if (!stored.baseUrl.isNullOrBlank() && validation.errorMessage != null) {
-            throw AuthenticationRequiredException(validation.errorMessage)
+        if (!stored.baseUrl.isNullOrBlank() && validation.errorCode != null) {
+            throw AuthenticationRequiredException(validation.errorCode)
         }
 
         val baseUrl = validation.normalizedUrl ?: return null
