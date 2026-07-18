@@ -129,6 +129,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var playbackRecoveryJob: Job? = null
     private var forwardCacheJob: Job? = null
     private var activeBookCacheJob: Job? = null
+    private var catalogSyncJob: Job? = null
     private var transientRetryState: TransientRetryState = TransientRetryState.NONE
     private var lastTrackTransitionAtMs: Long? = null
     private var wasPlayWhenReady: Boolean = false
@@ -492,6 +493,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
             val effectiveParentId = parentId.normalizedBrowseParentId()
+            val node = BrowseNodeId.parse(effectiveParentId)
             if (
                 !hasStoredLoginCredentials() &&
                 effectiveParentId != BrowseNodeId.Root.serialize() &&
@@ -499,8 +501,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             ) {
                 return Futures.immediateFuture(authRequiredResult(browser, effectiveParentId, params))
             }
+            when (node) {
+                BrowseNodeId.Root,
+                BrowseNodeId.Recent,
+                BrowseNodeId.Books,
+                BrowseNodeId.Authors,
+                -> refreshCatalogIfStaleInBackground("browse:${node.serialize()}")
+
+                else -> Unit
+            }
             return serviceFuture("getChildren:$parentId") {
-                val node = BrowseNodeId.parse(effectiveParentId)
                 val children = if (node == BrowseNodeId.Resume) {
                     playbackStateStorage.load()
                         ?.let(PlaybackSnapshotPolicy::placeholderMediaItem)
@@ -1865,6 +1875,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     cancelForwardCache()
                 }
                 if (isValidated && !wasValidated) {
+                    refreshCatalogIfStaleInBackground("network_return")
                     if (activeBook != null && activePlaybackSessionId == null) {
                         restoreStoredPlaybackWithTimeout(playWhenResolved = player.playWhenReady)
                     }
@@ -1875,6 +1886,43 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     notifyBrowseTreeChanged()
                 }
                 wasValidated = isValidated
+            }
+        }
+    }
+
+    private fun refreshCatalogIfStaleInBackground(source: String) {
+        if (
+            !hasStoredLoginCredentials() ||
+            !connectivityMonitor.networkValidated.value ||
+            catalogSyncJob?.isActive == true
+        ) {
+            return
+        }
+        catalogSyncJob = serviceScope.launch {
+            val previous = mediaCatalog.syncSnapshot
+            runCatching {
+                syncRepository.syncIfStale()
+            }.onSuccess { snapshot ->
+                if (snapshot != previous) {
+                    updateSyncSnapshot(snapshot)
+                    diagnosticEventLogger.record(
+                        "background_catalog_sync_finished",
+                        mapOf(
+                            "source" to source,
+                            "status" to snapshot.status.name,
+                            "books" to snapshot.bookCount.toString(),
+                        ),
+                    )
+                }
+            }.onFailure { exception ->
+                if (exception is CancellationException) {
+                    throw exception
+                }
+                diagnosticEventLogger.record(
+                    "background_catalog_sync_failed",
+                    exceptionDiagnostics(exception, "source" to source),
+                )
+                Log.w(TAG, "Background catalog sync failed from $source.", exception)
             }
         }
     }

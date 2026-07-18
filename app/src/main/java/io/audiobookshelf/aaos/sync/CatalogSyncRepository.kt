@@ -13,6 +13,8 @@ import io.audiobookshelf.aaos.catalog.persistence.LibraryEntity
 import io.audiobookshelf.aaos.catalog.persistence.SyncStateEntity
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 
@@ -21,11 +23,17 @@ class CatalogSyncRepository(
     private val authenticatedRequestRunner: AuthenticatedRequestRunner,
     private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
 ) {
+    private val syncMutex = Mutex()
+
     suspend fun loadSnapshot(): SyncSnapshot = withContext(Dispatchers.IO) {
         database.syncStateDao().get()?.toSnapshot() ?: SyncSnapshot(status = SyncStatus.IDLE)
     }
 
-    suspend fun syncNow(): SyncSnapshot = withContext(Dispatchers.IO) {
+    suspend fun syncNow(): SyncSnapshot = syncMutex.withLock {
+        syncNowLocked()
+    }
+
+    private suspend fun syncNowLocked(): SyncSnapshot = withContext(Dispatchers.IO) {
         val previous = loadSnapshot()
         val runningSnapshot = previous.copy(status = SyncStatus.RUNNING, message = UserVisibleStatus.CATALOG_SYNC_RUNNING)
         persistSyncState(runningSnapshot)
@@ -62,10 +70,10 @@ class CatalogSyncRepository(
     suspend fun syncIfStale(
         maxCacheAgeMs: Long = SyncFreshnessPolicy.DEFAULT_MAX_CACHE_AGE_MS,
         nowMs: Long = System.currentTimeMillis(),
-    ): SyncSnapshot {
+    ): SyncSnapshot = syncMutex.withLock {
         val snapshot = loadSnapshot()
-        return if (SyncFreshnessPolicy.shouldRefresh(snapshot, nowMs, maxCacheAgeMs)) {
-            syncNow()
+        if (SyncFreshnessPolicy.shouldRefresh(snapshot, nowMs, maxCacheAgeMs)) {
+            syncNowLocked()
         } else {
             snapshot
         }
