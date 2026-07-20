@@ -1,6 +1,5 @@
 package io.audiobookshelf.aaos.playback
 
-import androidx.core.net.toUri
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
 import io.audiobookshelf.aaos.absapi.PlaybackSessionSummary
@@ -39,6 +38,8 @@ class AudiobookshelfPlaybackRepository(
         accessToken: String,
     ): ResolvedPlaybackSession {
         val playbackSession = apiClient.createPlaybackSession(baseUrl, accessToken, bookId)
+        val sessionId = playbackSession.sessionId
+            ?: throw PlaybackResolutionException("Die Playback-Session enthaelt keine ID.")
         val catalogBook = database.bookDao().getPlayableById(bookId)
 
         val queue = playbackSession.audioTracks
@@ -54,7 +55,7 @@ class AudiobookshelfPlaybackRepository(
                     id = track.id.ifBlank { "track-$index" },
                     title = track.title?.takeIf { it.isNotBlank() }
                         ?: inferTrackTitle(catalogBook, index, playbackSession.audioTracks.size),
-                    contentUrl = resolveContentUrl(baseUrl, track.contentUrl),
+                    contentUrl = playbackSessionTrackUrl(baseUrl, sessionId, track.index),
                     mimeType = track.mimeType,
                     durationMs = track.durationMs,
                     startOffsetMs = track.startOffsetMs,
@@ -89,7 +90,7 @@ class AudiobookshelfPlaybackRepository(
                 startIndex = startPosition.trackIndex,
                 startPositionMs = startPosition.positionMs,
             ),
-            sessionId = playbackSession.sessionId,
+            sessionId = sessionId,
         )
     }
 
@@ -102,24 +103,6 @@ class AudiobookshelfPlaybackRepository(
         }
     }
 
-    private fun resolveContentUrl(baseUrl: String, contentUrl: String): String {
-        val contentUri = contentUrl.toUri()
-        if (contentUri.isAbsolute) {
-            return contentUrl
-        }
-
-        val baseUri = baseUrl.toUri()
-        val builder = baseUri.buildUpon().encodedQuery(null).fragment(null)
-        builder.path(null)
-        contentUri.pathSegments
-            .forEach { segment ->
-                builder.appendPath(segment)
-            }
-        contentUri.encodedQuery?.let { builder.encodedQuery(it) }
-        contentUri.encodedFragment?.let { builder.encodedFragment(it) }
-        return builder.build().toString()
-    }
-
     private fun List<PlaybackTrack>.sumOfKnownDurations(): Long? {
         return if (any { it.durationMs == null }) {
             null
@@ -127,6 +110,14 @@ class AudiobookshelfPlaybackRepository(
             sumOf { it.durationMs ?: 0L }
         }
     }
+}
+
+internal fun playbackSessionTrackUrl(
+    baseUrl: String,
+    sessionId: String,
+    trackIndex: Int,
+): String {
+    return "${baseUrl.trimEnd('/')}/public/session/$sessionId/track/$trackIndex"
 }
 
 private data class ResolvedPlaybackSession(

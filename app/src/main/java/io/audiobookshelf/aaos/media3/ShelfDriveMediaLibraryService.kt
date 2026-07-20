@@ -60,7 +60,6 @@ import io.audiobookshelf.aaos.playback.PlaybackResolutionException
 import io.audiobookshelf.aaos.playback.PlaybackResumePolicy
 import io.audiobookshelf.aaos.playback.PlaybackSnapshotPolicy
 import io.audiobookshelf.aaos.playback.PlaybackStateStorage
-import io.audiobookshelf.aaos.playback.PlaybackTrack
 import io.audiobookshelf.aaos.playback.QueueStartPosition
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlayback
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlaybackSession
@@ -382,6 +381,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         )
         if (error.isUnauthorizedResponse()) {
             recoverPlaybackAfterUnauthorized()
+        } else if (error.isMissingPlaybackSessionResponse(activeTrack?.contentUrl)) {
+            recoverPlaybackAfterMissingSession()
         } else if (error.isTransientNetworkResponse()) {
             recoverPlaybackAfterTransientNetworkError()
         }
@@ -1103,10 +1104,18 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private fun recoverPlaybackAfterUnauthorized() {
+        recoverPlaybackSession("unauthorized")
+    }
+
+    private fun recoverPlaybackAfterMissingSession() {
+        recoverPlaybackSession("session_not_found")
+    }
+
+    private fun recoverPlaybackSession(source: String) {
         val currentBook = activeBook ?: return
         val bookId = currentBook.bookId
         startPlaybackRecovery(
-            source = "unauthorized",
+            source = source,
             bookId = bookId,
             positionMs = logicalPlaybackPositionMs(),
             speed = player.playbackParameters.speed,
@@ -1158,7 +1167,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         preserveMatchingQueue: Boolean = false,
     ) {
         val resolved = playbackRepository.resolveBook(bookId)
-        val queueMatches = activeBook?.queue?.map(PlaybackTrack::id) == resolved.playback.queue.map(PlaybackTrack::id)
+        val queueMatches = activeBook?.queue == resolved.playback.queue
         activateResolvedPlayback(
             resolved = resolved,
             positionMs = positionMs,
@@ -1594,6 +1603,19 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private suspend fun uploadProgress(snapshot: PlaybackProgressSnapshot) {
         val result = progressSyncRepository.uploadCheckedProgress(snapshot)
+        if (
+            result.sessionMissing &&
+            activeBook?.bookId == snapshot.bookId &&
+            activePlaybackSessionId == snapshot.playbackSessionId
+        ) {
+            activePlaybackSessionId = null
+            if (
+                snapshot.reason != PlaybackProgressReason.ENDED &&
+                snapshot.reason != PlaybackProgressReason.STOPPED
+            ) {
+                recoverPlaybackAfterMissingSession()
+            }
+        }
         if (result.uploaded && activeBook?.bookId == snapshot.bookId) {
             activePlaybackSessionId = result.sessionId
         }
@@ -1746,6 +1768,15 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         return generateSequence(cause) { it.cause }
             .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
             .any { it.responseCode == 401 }
+    }
+
+    private fun PlaybackException.isMissingPlaybackSessionResponse(contentUrl: String?): Boolean {
+        if (contentUrl?.contains("/public/session/") != true) {
+            return false
+        }
+        return generateSequence(cause) { it.cause }
+            .filterIsInstance<HttpDataSource.InvalidResponseCodeException>()
+            .any { it.responseCode == 404 }
     }
 
     private fun PlaybackException.isTransientNetworkResponse(): Boolean {

@@ -21,4 +21,14 @@ class AudiobookshelfApiClientTest {
         assertEquals(5.432, fields["timeListened"])
         assertEquals(1_713_456_789_000L, fields["lastUpdate"])
     }
+
+    @Test
+    fun `authorization uses current ABS post endpoint`() {
+        val request = authorizationRequest("access-token")
+
+        assertEquals("/api/authorize", request.path)
+        assertEquals("POST", request.method)
+        assertEquals("Bearer access-token", request.headers["Authorization"])
+        assertEquals("application/json", request.headers["Content-Type"])
+    }
 }

@@ -108,6 +108,26 @@ class ProgressSyncRepository(
             } catch (_: AuthenticationRequiredException) {
                 recordQueuedProgress(snapshot.bookId, "authentication_required")
                 ProgressUploadResult(uploaded = false, snapshot.playbackSessionId)
+            } catch (exception: ApiException) {
+                if (exception.statusCode == 404 && !snapshot.playbackSessionId.isNullOrBlank()) {
+                    recordQueuedProgress(snapshot.bookId, "session_not_found")
+                    diagnosticEventLogger?.record(
+                        "playback_session_missing",
+                        mapOf(
+                            "bookId" to snapshot.bookId,
+                            "sessionId" to snapshot.playbackSessionId,
+                        ),
+                    )
+                    ProgressUploadResult(
+                        uploaded = false,
+                        sessionId = null,
+                        sessionMissing = true,
+                    )
+                } else {
+                    Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
+                    recordQueuedProgress(snapshot.bookId, "api_${exception.statusCode}")
+                    ProgressUploadResult(uploaded = false, snapshot.playbackSessionId)
+                }
             } catch (exception: IOException) {
                 Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
                 recordQueuedProgress(snapshot.bookId, exception.javaClass.simpleName)
@@ -290,4 +310,5 @@ internal sealed interface ServerProgressLookup {
 internal data class ProgressUploadResult(
     val uploaded: Boolean,
     val sessionId: String?,
+    val sessionMissing: Boolean = false,
 )
