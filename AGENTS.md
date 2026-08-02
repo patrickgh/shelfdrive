@@ -1,145 +1,130 @@
-# AGENTS.MD
+# AGENTS.md
 
-## Project overview
+## Project scope
 
-This is an Android Automotive OS media app for audiobooks, built with Kotlin and AndroidX Media3.
+ShelfDrive is a native Kotlin/AndroidX Media3 audiobook app for Audiobookshelf. It provides browsing, search, playback, metadata, queues, and controls through the vehicle's native media host.
 
-The app is intended for AAOS / Android Automotive head units, especially Polestar 2 / AAOS 13 style environments. It should integrate as a media app through Media3 session/browser APIs and the system media host. It is not a general Android Auto projection app.
+The primary target is the Polestar 2. Keep reasonable compatibility with common AAOS vehicles, but do not add complexity for hypothetical or exceptionally rare cases. The project targets AAOS only, not Android Auto, phones, or tablets.
 
-Primary goals:
-- Provide audiobook playback through AndroidX Media3.
-- Expose media content through a MediaLibraryService / MediaSession.
-- Remain compatible with Android Automotive OS media app expectations.
-- Keep the app safe for vehicle use: no custom distracting UI while driving unless explicitly required and compliant.
+Audiobookshelf is the source of truth for the catalog and listening progress. The AAOS media host renders the primary UI; ShelfDrive provides the Media3 library/session, playback behavior, and settings.
 
-## Important technologies
+Current non-goals are:
 
-- Kotlin
-- Gradle / Android Gradle Plugin
-- AndroidX Media3
-- Android Automotive OS
-- MediaSession / MediaLibraryService
-- ExoPlayer
-- Android manifest media-service integration
+- Android Auto, phone, or tablet support.
+- Podcast support.
+- Offline downloads.
+- A custom in-app player.
+- Local listening history that intentionally diverges from Audiobookshelf.
 
-## Repository map
+Do not add these capabilities or remove existing features without prior discussion and explicit approval.
 
-Use this rough map before opening many files:
+The app is in a closed Play Store test. Existing data matters, but compatibility does not automatically outweigh a simpler design. Breaking changes are acceptable after their benefits and consequences are approved. After a public release, discuss compatibility and migrations before breaking behavior.
 
-- `app/src/main/AndroidManifest.xml`
-  - AAOS declarations, permissions, services, intent filters, exported flags.
+## Required workflow
 
-- `app/src/main/java/...`
-  - Main Kotlin source code.
+Analysis and non-mutating diagnostics may proceed without approval.
 
-- `app/src/main/res/`
-  - Android resources.
+Before implementing a change:
 
-- `app/build.gradle` or `app/build.gradle.kts`
-  - App module config, SDK versions, dependencies.
+1. Inspect the relevant code, tests, and worktree state.
+2. Present a proportionate implementation plan.
+3. Wait for explicit approval and resolve any open questions.
+4. Implement only the approved scope.
 
-- `build.gradle` or `build.gradle.kts`
-  - Root Gradle config.
+Keep plans short for small changes and detailed enough to review complex trade-offs. Cover the goal, smallest reasonable solution, affected areas, dependencies, risks, verification, missing test resources, and completion criteria.
 
-- `gradle/wrapper/`
-  - Gradle wrapper files.
+Stop and discuss material scope growth, unexpected complexity, or uncertain decisions. Report unrelated problems instead of fixing them incidentally; propose an updated plan if one blocks the work.
 
-- `README.md`
-  - Human-facing project overview. Read only if task needs user-facing docs.
+Explicit approval is required before:
 
-Note: There is currently no Gradle version catalog. Dependency versions are declared directly in `app/build.gradle.kts`, and plugin versions are declared in the root `build.gradle.kts`.
+- Adding or replacing a dependency.
+- Starting a complex extension or cross-cutting refactor.
+- Adding substantial abstraction, indirection, or infrastructure.
+- Adding behavior mainly for compatibility or rare edge cases.
+- Breaking persistence, APIs, media IDs, or established behavior.
+- Proceeding with uncertain requirements or without essential test resources.
+- Removing an existing feature.
+- Committing, pushing, tagging, publishing, or releasing.
 
-Kotlin sources live under the conventional Android `app/src/main/java/...` source set. Do not assume files are Java because the directory is named `java`.
+Refactoring is welcome when it has a concrete benefit. Explain that benefit before implementation.
 
-## Files and directories to avoid unless explicitly needed
+## Engineering principles
 
-Do not read, summarize, or modify these unless the user specifically asks:
+Use this priority order:
 
-- `build/`
-- `app/build/`
-- `.gradle/`
-- `.idea/`
-- `.kotlin/`
-- `captures/`
-- `*.apk`
-- `*.aab`
-- `*.aar`
-- `*.class`
-- `*.dex`
-- `*.hprof`
-- `*.log`
-- `local.properties`
-- `keystore.properties`
-- `*.jks`
-- `*.keystore`
-- `google-services.json`
-- generated files
-- downloaded documentation dumps
-- large copied API references
-- screenshots or media files unless the task is about them
+1. Correctness.
+2. Simplicity.
+3. Readability.
+4. Maintainability.
+5. Performance.
 
-Prefer source files, Gradle files, manifests, and small project docs.
+Optimize performance only with evidence of a real problem. Prefer the smallest direct implementation that satisfies the agreed behavior.
 
-## General workflow
+Handle normal and realistically expected failures. If required runtime data is absent or contradictory, expose a clear error or user-visible state and record useful diagnostics. Never silently invent plausible defaults or state.
 
-Before editing:
-1. Identify the smallest set of files needed for the task.
-2. Prefer searching symbols and filenames over reading entire directories.
-3. Read Gradle and Manifest files only when compatibility, dependencies, SDK levels, or app registration are relevant.
-4. Do not inspect build artifacts or generated files.
+Do not introduce speculative workarounds, legacy layers, duplicate paths, dodge flags, or redirect-only wrappers. Complete approved migrations and remove obsolete code, comments, wrappers, and tests unless an active consumer needs them.
 
-When editing:
-1. Make minimal, focused changes.
-2. Preserve existing architecture and naming.
-3. Avoid broad refactors unless explicitly requested.
-4. Prefer idiomatic Kotlin.
-5. Do not introduce new dependencies unless clearly justified.
+Follow the established Kotlin style and local architecture unless an approved refactor intentionally changes them. Code, identifiers, comments, and this file use English. Communicate with the project owner in German unless they use another language.
 
-## Coding policy
+For a dependency proposal, explain the need, alternatives, maintenance status, and complexity impact.
 
-Prefer loud failures over fake defaults. If required runtime data is missing, fail explicitly or surface a user-visible error instead of silently inventing state.
+Use technical sources in this order:
 
-Prefer handling a case directly over adding a dodge flag or configuration switch.
+1. Current project code and tests.
+2. Official Android and AndroidX Media3 documentation.
+3. Official Audiobookshelf documentation.
+4. Clearly identified supplementary third-party sources.
 
-When replacing or migrating a code path, carry the change through to the obvious finish line. Remove dead code, obsolete comments, compatibility wrappers, redirect-only helpers, and stale tests that only existed for the old path unless a concrete live consumer still needs them.
+Gradle files and `gradle/libs.versions.toml` are the source of truth for SDK, plugin, and dependency versions. Do not duplicate changing versions here.
 
-Do not keep two names or two active paths for one concept "for safety" without a specific compatibility requirement. Prefer one source of truth.
+## Testing and verification
 
-After editing:
-1. Run the most specific available check.
-2. If full build is expensive, run the narrowest Gradle task that verifies the change.
-3. Report changed files and checks run.
-
-## Build and test commands
-
-Use these commands from the repository root.
-
-List tasks:
-
-```bash
-./gradlew tasks
-```
-
-Run unit tests:
+Agree on appropriate verification in the implementation plan and run the narrowest meaningful checks first. Common commands are:
 
 ```bash
 ./gradlew :app:testDebugUnitTest
-```
-
-Build a debug APK:
-
-```bash
 ./gradlew :app:assembleDebug
-```
-
-Run Android lint:
-
-```bash
 ./gradlew :app:lintDebug
-```
-
-Run instrumentation tests when an emulator or AAOS device is connected:
-
-```bash
 ./gradlew :app:connectedDebugAndroidTest
 ```
+
+Use the Gradle wrapper. Bug fixes should receive a regression test when practical, and new logic should receive focused tests when this does not require disproportionate infrastructure.
+
+After plan approval, the agent may autonomously build, install, launch, reset, clear data, exercise scenarios, and inspect logs in the AAOS emulator.
+
+The Polestar 2 has no ADB access; the project owner performs device tests. Provide concrete steps and request useful test data, diagnostic packages, server logs, screenshots, or observed media-host behavior.
+
+Never claim verification that was not performed. Distinguish automated checks, static review, emulator tests, remaining Polestar tests, and checks that could not run. Suggest inputs that would improve confidence.
+
+Room changes must address existing closed-test data, migration or an approved destructive change, focused tests, and the checked-in schema under `app/schemas/`.
+
+Update documentation only when usage, setup, important architecture, or diagnostics actually change.
+
+## Repository orientation
+
+Search targeted symbols and filenames before reading large parts of the repository.
+
+- `app/src/main/AndroidManifest.xml`: AAOS registration, permissions, components, and Media3 service declarations.
+- `app/src/main/java/io/audiobookshelf/aaos/`: Kotlin application source.
+- `app/src/main/res/`: Android resources and settings UI.
+- `app/src/test/` and `app/src/androidTest/`: local and device tests.
+- `app/schemas/`: checked-in Room schema history.
+- `app/build.gradle.kts` and `gradle/libs.versions.toml`: app configuration and versions.
+- `README.md` and `docs/`: user-facing and release documentation.
+- `tools/diagnostics-server/`: diagnostics upload server; inspect or change it only for diagnostics-related tasks.
+
+Avoid build outputs and generated artifacts when source files are sufficient.
+
+## Worktree, sensitive files, and Git
+
+Inspect the worktree before editing. Preserve existing modifications and avoid overlapping edits. Never discard, overwrite, reset, or clean unrelated work.
+
+Do not access local configuration, credentials, tokens, signing material, or generated artifacts unless the approved task requires it. Update checked-in Room schemas only through the normal schema workflow.
+
+Working branches and staging are allowed. Remove only branches created for the task and unstage only files staged by the agent. Never delete or reset source changes as cleanup.
+
+Do not commit, push, tag, publish, upload, or release without separate explicit approval.
+
+## Completion report
+
+Report the changes, affected areas, checks and results, unverified items, risks, Polestar test steps, and remaining Git state. Do not call work complete while an agreed criterion remains unmet.

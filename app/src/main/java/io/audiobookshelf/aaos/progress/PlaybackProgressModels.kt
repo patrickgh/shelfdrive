@@ -17,6 +17,6 @@ enum class PlaybackProgressReason(val shouldRefreshBrowse: Boolean) {
     SEEKED(false),
     PAUSED(true),
     STOPPED(true),
-    TRACK_CHANGED(true),
+    TRACK_CHANGED(false),
     ENDED(true),
 }

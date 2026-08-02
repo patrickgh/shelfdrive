@@ -26,11 +26,6 @@ object PlaybackAudioCache {
     @Volatile
     private var cache: SimpleCache? = null
 
-    data class TrackCacheRequest(
-        val uri: String,
-        val cacheKey: String,
-    )
-
     data class TrackCacheStatus(
         val cachedBytes: Long,
         val contentLengthBytes: Long?,
@@ -75,7 +70,8 @@ object PlaybackAudioCache {
     fun cacheTrack(
         context: Context,
         upstreamFactory: DataSource.Factory,
-        request: TrackCacheRequest,
+        uri: String,
+        cacheKey: String,
         onProgress: ((contentLengthBytes: Long?, cachedBytes: Long) -> Unit)? = null,
     ) {
         val dataSourceFactory = CacheDataSource.Factory()
@@ -83,8 +79,8 @@ object PlaybackAudioCache {
             .setUpstreamDataSourceFactory(upstreamFactory)
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
         val dataSpec = DataSpec.Builder()
-            .setUri(request.uri)
-            .setKey(request.cacheKey)
+            .setUri(uri)
+            .setKey(cacheKey)
             .build()
         val progressListener = onProgress?.let { callback ->
             CacheWriter.ProgressListener { requestLength, bytesCached, _ ->
@@ -120,15 +116,6 @@ object PlaybackAudioCache {
             return legacy
         }
         return preferred
-    }
-
-    fun hasCachedDataAtPosition(
-        context: Context,
-        cacheKey: String,
-        positionMs: Long,
-        durationMs: Long?,
-    ): Boolean {
-        return trackCacheStatus(context, cacheKey, positionMs, durationMs).hasDataAtPosition
     }
 
     fun trackCacheStatus(

@@ -29,12 +29,11 @@ class AuthRepository(
 
         if (!accessToken.isNullOrBlank()) {
             try {
-                val authorization = apiClient.authorize(baseUrl, accessToken, username)
-                if (authorization.isAuthorized) {
-                    val session = authorization.session
+                val session = apiClient.authorize(baseUrl, accessToken, username)
+                if (session != null) {
                     return@withContext buildAuthenticatedSnapshot(
                         baseUrl = baseUrl,
-                        username = session?.username ?: username,
+                        username = session.username,
                         session = session,
                         hasStoredPassword = !stored.password.isNullOrBlank(),
                     )

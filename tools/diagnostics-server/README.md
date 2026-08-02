@@ -85,10 +85,6 @@ If you change the upload credentials on the server, the Android app must be
 changed to match. Changing only the download credentials does not require an app
 release.
 
-For compatibility with older deployments, `DIAGNOSTICS_BASIC_USERNAME` and
-`DIAGNOSTICS_BASIC_PASSWORD` are still accepted as upload credential overrides
-when the new upload-specific variables are not set.
-
 List stored packages:
 
 ```bash

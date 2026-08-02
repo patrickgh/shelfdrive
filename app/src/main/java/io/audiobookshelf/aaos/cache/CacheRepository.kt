@@ -35,7 +35,7 @@ class CacheRepository(
     }
 
     private fun buildSnapshot(clearedAt: Long? = null): CacheSnapshot {
-        val catalog = databaseFiles().fold(Size.EMPTY) { total, file -> total + file.sizeRecursively() }
+        val catalog = databaseFiles().fold(Size()) { total, file -> total + file.sizeRecursively() }
         val artwork = File(appContext.cacheDir, ARTWORK_CACHE_DIR).sizeRecursively()
         val audio = PlaybackAudioCache.directory(appContext).sizeRecursively()
         val total = catalog + artwork + audio
@@ -69,31 +69,18 @@ class CacheRepository(
     }
 
     private fun File.sizeRecursively(): Size {
-        if (!exists()) {
-            return Size.EMPTY
-        }
-        if (isFile) {
-            return Size(bytes = length(), fileCount = 1)
-        }
-        return listFiles()
-            ?.fold(Size.EMPTY) { total, child -> total + child.sizeRecursively() }
-            ?: Size.EMPTY
+        return walkTopDown()
+            .filter { it.isFile }
+            .fold(Size()) { total, file ->
+                Size(total.bytes + file.length(), total.fileCount + 1)
+            }
     }
 
     private data class Size(
-        val bytes: Long,
-        val fileCount: Int,
+        val bytes: Long = 0L,
+        val fileCount: Int = 0,
     ) {
-        operator fun plus(other: Size): Size {
-            return Size(
-                bytes = bytes + other.bytes,
-                fileCount = fileCount + other.fileCount,
-            )
-        }
-
-        companion object {
-            val EMPTY = Size(bytes = 0L, fileCount = 0)
-        }
+        operator fun plus(other: Size) = Size(bytes + other.bytes, fileCount + other.fileCount)
     }
 
     companion object {

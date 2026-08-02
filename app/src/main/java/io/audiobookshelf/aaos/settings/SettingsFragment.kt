@@ -3,6 +3,7 @@ package io.audiobookshelf.aaos.settings
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
+import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.text.InputType
 import android.util.TypedValue
@@ -18,15 +19,10 @@ import androidx.preference.PreferenceGroup
 import androidx.core.content.ContextCompat
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
-import io.audiobookshelf.aaos.auth.AuthSnapshot
 import io.audiobookshelf.aaos.auth.AuthStatus
-import io.audiobookshelf.aaos.cache.CacheSnapshot
-import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadSnapshot
 import io.audiobookshelf.aaos.diagnostics.DiagnosticsUploadStatus
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
-import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsSnapshot
 import io.audiobookshelf.aaos.status.UserVisibleStatus
-import io.audiobookshelf.aaos.sync.SyncSnapshot
 import io.audiobookshelf.aaos.sync.SyncStatus
 import java.text.DateFormat
 import java.util.Date
@@ -36,13 +32,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private var usernameInput: String = ""
     private var passwordInput: String = ""
     private var state = SettingsState()
-    private val currentAuthSnapshot: AuthSnapshot get() = state.authSnapshot
-    private val currentSyncSnapshot: SyncSnapshot get() = state.syncSnapshot
-    private val currentCacheSnapshot: CacheSnapshot get() = state.cacheSnapshot
-    private val currentDiagnosticsSnapshot: StartupDiagnosticsSnapshot get() = state.diagnosticsSnapshot
-    private val currentDiagnosticsUploadSnapshot: DiagnosticsUploadSnapshot get() = state.diagnosticsUploadSnapshot
-    private val isCommandChannelReady: Boolean get() = state.commandChannelReady
-    private val isLoginInProgress: Boolean get() = state.loginInProgress
     private var consecutiveVersionClicks: Int = 0
     private var areDiagnosticsVisible: Boolean = false
 
@@ -186,7 +175,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<EditTextPreference>(KEY_DIAGNOSTICS_UPLOAD_URL)?.apply {
-            text = currentDiagnosticsUploadSnapshot.uploadUrl
+            text = state.diagnosticsUploadSnapshot.uploadUrl
             setOnBindEditTextListener { editText ->
                 editText.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
                 styleEditText(editText)
@@ -208,7 +197,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private fun configureActions() {
         findPreference<Preference>(KEY_ACCOUNT_ACTION)?.setOnPreferenceClickListener {
             resetDiagnosticsUnlockClicks()
-            if (currentAuthSnapshot.status == AuthStatus.AUTHENTICATED) {
+            if (state.authSnapshot.status == AuthStatus.AUTHENTICATED) {
                 (activity as? SettingsActivity)?.performLogout()
             } else {
                 startLogin()
@@ -272,7 +261,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             usernameInput.ifBlank { getString(R.string.settings_not_configured) }
         findPreference<Preference>(KEY_PASSWORD)?.summary = when {
             passwordInput.isNotBlank() -> getString(R.string.settings_password_summary_saved)
-            currentAuthSnapshot.hasStoredPassword -> getString(R.string.settings_password_summary_saved)
+            state.authSnapshot.hasStoredPassword -> getString(R.string.settings_password_summary_saved)
             else -> getString(R.string.settings_password_summary_missing)
         }
         findPreference<Preference>(KEY_LIBRARY_COUNT)?.summary = buildCatalogSummary()
@@ -280,7 +269,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.summary = buildCacheSummary()
         findPreference<Preference>(KEY_STARTUP_DIAGNOSTICS)?.summary = buildStartupDiagnosticsSummary()
         findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_URL)?.summary =
-            currentDiagnosticsUploadSnapshot.uploadUrl.ifBlank { getString(R.string.settings_diagnostics_upload_url_missing) }
+            state.diagnosticsUploadSnapshot.uploadUrl.ifBlank { getString(R.string.settings_diagnostics_upload_url_missing) }
         findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.summary = buildDiagnosticsUploadSummary()
         findPreference<Preference>(KEY_APP_VERSION)?.summary = getString(
             R.string.settings_app_version_summary,
@@ -302,9 +291,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun renderActionAvailability() {
         findPreference<Preference>(KEY_ACCOUNT_ACTION)?.apply {
-            val isLoggedIn = currentAuthSnapshot.status == AuthStatus.AUTHENTICATED
+            val isLoggedIn = state.authSnapshot.status == AuthStatus.AUTHENTICATED
             when {
-                isLoginInProgress -> {
+                state.loginInProgress -> {
                     title = getString(R.string.settings_login_in_progress_title)
                     summary = getString(R.string.settings_login_in_progress_summary)
                     isEnabled = false
@@ -312,7 +301,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 isLoggedIn -> {
                     title = getString(R.string.settings_logout_title)
                     summary = getString(R.string.settings_logout_summary)
-                    isEnabled = isCommandChannelReady
+                    isEnabled = state.commandChannelReady
                 }
                 else -> {
                     title = getString(R.string.settings_login_title)
@@ -323,13 +312,13 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<Preference>(KEY_RESYNC_ACTION)?.isEnabled =
-            isCommandChannelReady && currentAuthSnapshot.status == AuthStatus.AUTHENTICATED
+            state.commandChannelReady && state.authSnapshot.status == AuthStatus.AUTHENTICATED
 
-        findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.isEnabled = isCommandChannelReady
+        findPreference<Preference>(KEY_CLEAR_CACHE_ACTION)?.isEnabled = state.commandChannelReady
 
         findPreference<Preference>(KEY_DIAGNOSTICS_UPLOAD_ACTION)?.isEnabled =
-            currentDiagnosticsUploadSnapshot.uploadUrl.isNotBlank() &&
-                currentDiagnosticsUploadSnapshot.lastUploadStatus != DiagnosticsUploadStatus.RUNNING
+            state.diagnosticsUploadSnapshot.uploadUrl.isNotBlank() &&
+                state.diagnosticsUploadSnapshot.lastUploadStatus != DiagnosticsUploadStatus.RUNNING
     }
 
     private fun maybeStartLoginAfterRequiredFieldsChanged() {
@@ -340,10 +329,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun canStartLogin(allowStoredPassword: Boolean): Boolean {
         val passwordAvailable = passwordInput.isNotBlank() ||
-            (allowStoredPassword && currentAuthSnapshot.hasStoredPassword)
-        return isCommandChannelReady &&
-            !isLoginInProgress &&
-            currentAuthSnapshot.status != AuthStatus.AUTHENTICATED &&
+            (allowStoredPassword && state.authSnapshot.hasStoredPassword)
+        return state.commandChannelReady &&
+            !state.loginInProgress &&
+            state.authSnapshot.status != AuthStatus.AUTHENTICATED &&
             serverUrlInput.isNotBlank() &&
             usernameInput.isNotBlank() &&
             passwordAvailable
@@ -365,18 +354,18 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun buildAuthStatusSummary(): String {
-        val base = when (currentAuthSnapshot.status) {
+        val base = when (state.authSnapshot.status) {
             AuthStatus.AUTHENTICATED -> getString(R.string.settings_auth_status_authenticated)
             AuthStatus.SESSION_EXPIRED -> getString(R.string.settings_auth_status_session_expired)
             AuthStatus.LOGIN_FAILED -> getString(R.string.settings_auth_status_login_failed)
             AuthStatus.LOGGED_OUT -> getString(R.string.settings_auth_status_logged_out)
         }
         val parts = mutableListOf(base)
-        currentAuthSnapshot.statusMessage
+        state.authSnapshot.statusMessage
             ?.takeIf { it.isNotBlank() }
             ?.takeUnless { it == UserVisibleStatus.SERVER_VERSION_UNKNOWN }
             ?.let { parts += localizeStatusMessage(it) }
-        currentAuthSnapshot.serverVersion
+        state.authSnapshot.serverVersion
             ?.takeIf { it.isNotBlank() }
             ?.let { version ->
                 parts += getString(R.string.settings_server_version_summary, version)
@@ -385,7 +374,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun buildSyncSummary(): String {
-        val base = when (currentSyncSnapshot.status) {
+        val base = when (state.syncSnapshot.status) {
             SyncStatus.IDLE -> getString(R.string.settings_resync_summary_idle)
             SyncStatus.RUNNING -> getString(R.string.settings_resync_summary_running)
             SyncStatus.SUCCESS -> getString(R.string.settings_resync_summary_success)
@@ -393,8 +382,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         val parts = mutableListOf(base)
-        if (currentSyncSnapshot.status == SyncStatus.FAILED) {
-            currentSyncSnapshot.message
+        if (state.syncSnapshot.status == SyncStatus.FAILED) {
+            state.syncSnapshot.message
                 ?.takeIf { it.isNotBlank() }
                 ?.let { parts += localizeStatusMessage(it) }
         }
@@ -403,29 +392,29 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun buildCatalogSummary(): String {
         val parts = mutableListOf(buildAuthStatusSummary())
-        val hasCounts = currentSyncSnapshot.libraryCount > 0 ||
-            currentSyncSnapshot.bookCount > 0 ||
-            currentSyncSnapshot.authorCount > 0 ||
-            currentSyncSnapshot.status == SyncStatus.SUCCESS
+        val hasCounts = state.syncSnapshot.libraryCount > 0 ||
+            state.syncSnapshot.bookCount > 0 ||
+            state.syncSnapshot.authorCount > 0 ||
+            state.syncSnapshot.status == SyncStatus.SUCCESS
         if (hasCounts) {
             parts += getString(
                 R.string.settings_catalog_counts,
-                currentSyncSnapshot.libraryCount,
-                currentSyncSnapshot.bookCount,
-                currentSyncSnapshot.authorCount,
+                state.syncSnapshot.libraryCount,
+                state.syncSnapshot.bookCount,
+                state.syncSnapshot.authorCount,
             )
         } else {
             parts += getString(R.string.settings_library_count_unknown)
         }
 
-        currentSyncSnapshot.lastSyncedAt?.let { timestamp ->
+        state.syncSnapshot.lastSyncedAt?.let { timestamp ->
             parts += getString(
                 R.string.settings_catalog_updated_and_age,
                 formatSyncTimestamp(timestamp),
                 formatCacheAge(timestamp),
             )
         }
-        if (currentSyncSnapshot.status == SyncStatus.FAILED && currentSyncSnapshot.lastSyncedAt != null) {
+        if (state.syncSnapshot.status == SyncStatus.FAILED && state.syncSnapshot.lastSyncedAt != null) {
             parts += getString(R.string.settings_catalog_stale_after_failed_sync)
         }
         return parts.joinToString("\n")
@@ -482,12 +471,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
             UserVisibleStatus.SERVER_VERSION_UNPARSEABLE ->
                 getString(
                     R.string.status_server_version_unparseable,
-                    currentAuthSnapshot.serverVersion.orEmpty(),
+                    state.authSnapshot.serverVersion.orEmpty(),
                 )
             UserVisibleStatus.SERVER_VERSION_UNSUPPORTED ->
                 getString(
                     R.string.status_server_version_unsupported,
-                    currentAuthSnapshot.serverVersion.orEmpty(),
+                    state.authSnapshot.serverVersion.orEmpty(),
                 )
             UserVisibleStatus.SERVER_URL_INVALID ->
                 getString(R.string.status_server_url_invalid)
@@ -509,11 +498,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val parts = mutableListOf(
             getString(
                 R.string.settings_clear_cache_summary_usage,
-                Formatter.formatShortFileSize(requireContext(), currentCacheSnapshot.totalBytes),
+                Formatter.formatShortFileSize(requireContext(), state.cacheSnapshot.totalBytes),
             ),
             getString(R.string.settings_clear_cache_summary_scope),
         )
-        currentCacheSnapshot.clearedAt?.let { timestamp ->
+        state.cacheSnapshot.clearedAt?.let { timestamp ->
             parts += getString(R.string.settings_clear_cache_summary_cleared, formatSyncTimestamp(timestamp))
         }
         return parts.joinToString("\n")
@@ -521,30 +510,30 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun buildStartupDiagnosticsSummary(): String {
         val parts = mutableListOf<String>()
-        currentDiagnosticsSnapshot.lastServiceStartedAt?.let { timestamp ->
+        state.diagnosticsSnapshot.lastServiceStartedAt?.let { timestamp ->
             parts += getString(R.string.settings_diagnostics_last_start, formatSyncTimestamp(timestamp))
         } ?: run {
             parts += getString(R.string.settings_diagnostics_no_start)
         }
 
-        val restoreStatus = currentDiagnosticsSnapshot.lastRestoreStatus
+        val restoreStatus = state.diagnosticsSnapshot.lastRestoreStatus
         if (restoreStatus != null) {
             parts += getString(
                 R.string.settings_diagnostics_restore_status,
                 localizeRestoreStatus(restoreStatus),
             )
         }
-        currentDiagnosticsSnapshot.lastRestoreFinishedAt?.let { timestamp ->
+        state.diagnosticsSnapshot.lastRestoreFinishedAt?.let { timestamp ->
             parts += getString(R.string.settings_diagnostics_restore_finished, formatSyncTimestamp(timestamp))
         }
-        currentDiagnosticsSnapshot.lastRestoreMessage?.takeIf { it.isNotBlank() }?.let { message ->
+        state.diagnosticsSnapshot.lastRestoreMessage?.takeIf { it.isNotBlank() }?.let { message ->
             parts += getString(R.string.settings_diagnostics_restore_message, message)
         }
         return parts.joinToString("\n")
     }
 
     private fun buildDiagnosticsUploadSummary(): String {
-        val status = currentDiagnosticsUploadSnapshot.lastUploadStatus
+        val status = state.diagnosticsUploadSnapshot.lastUploadStatus
         val parts = mutableListOf(
             when (status) {
                 DiagnosticsUploadStatus.RUNNING -> getString(R.string.settings_diagnostics_upload_running)
@@ -553,10 +542,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 null -> getString(R.string.settings_diagnostics_upload_summary)
             },
         )
-        currentDiagnosticsUploadSnapshot.lastUploadFinishedAt?.let { timestamp ->
+        state.diagnosticsUploadSnapshot.lastUploadFinishedAt?.let { timestamp ->
             parts += getString(R.string.settings_diagnostics_upload_finished, formatSyncTimestamp(timestamp))
         }
-        currentDiagnosticsUploadSnapshot.lastUploadMessage?.takeIf { it.isNotBlank() }?.let { message ->
+        state.diagnosticsUploadSnapshot.lastUploadMessage?.takeIf { it.isNotBlank() }?.let { message ->
             parts += message
         }
         return parts.joinToString("\n")
@@ -578,16 +567,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun formatCacheAge(timestamp: Long): String {
-        val ageMs = (System.currentTimeMillis() - timestamp).coerceAtLeast(0L)
-        val minutes = ageMs / 60_000L
-        val hours = minutes / 60L
-        val days = hours / 24L
-        return when {
-            minutes < 1L -> getString(R.string.settings_cache_age_now)
-            minutes < 60L -> getString(R.string.settings_cache_age_minutes, minutes)
-            hours < 24L -> getString(R.string.settings_cache_age_hours, hours)
-            else -> getString(R.string.settings_cache_age_days, days)
-        }
+        return DateUtils.getRelativeTimeSpanString(
+            timestamp,
+            System.currentTimeMillis(),
+            DateUtils.MINUTE_IN_MILLIS,
+            DateUtils.FORMAT_ABBREV_RELATIVE,
+        ).toString()
     }
 
     private fun styleEditText(editText: android.widget.EditText) {

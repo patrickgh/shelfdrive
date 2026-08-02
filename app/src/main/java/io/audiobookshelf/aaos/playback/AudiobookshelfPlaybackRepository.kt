@@ -2,7 +2,6 @@ package io.audiobookshelf.aaos.playback
 
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
-import io.audiobookshelf.aaos.absapi.PlaybackSessionSummary
 import io.audiobookshelf.aaos.absapi.PlaybackTrackSummary
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase

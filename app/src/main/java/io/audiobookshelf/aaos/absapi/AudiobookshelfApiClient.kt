@@ -11,7 +11,6 @@ class AudiobookshelfApiClient(
     private val httpClient: AudiobookshelfHttpClient = AudiobookshelfHttpClient(),
 ) {
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun login(baseUrl: String, username: String, password: String): AuthenticatedSession {
         val payload = JSONObject()
             .put("username", username)
@@ -43,37 +42,29 @@ class AudiobookshelfApiClient(
         )
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun authorize(
         baseUrl: String,
         accessToken: String,
         fallbackUsername: String?,
-    ): AuthorizationState {
+    ): AuthenticatedSession? {
         val response = httpClient.execute(
             baseUrl = baseUrl,
             request = authorizationRequest(accessToken),
         )
 
         return when (response.statusCode) {
-            in 200..299 -> AuthorizationState(
-                isAuthorized = true,
-                session = parseAuthenticatedSession(
-                    body = response.body,
-                    fallbackUsername = fallbackUsername,
-                    fallbackAccessToken = accessToken,
-                ),
+            in 200..299 -> parseAuthenticatedSession(
+                body = response.body,
+                fallbackUsername = fallbackUsername,
+                fallbackAccessToken = accessToken,
             )
 
-            HttpURLConnection.HTTP_UNAUTHORIZED -> AuthorizationState(
-                isAuthorized = false,
-                session = null,
-            )
+            HttpURLConnection.HTTP_UNAUTHORIZED -> null
 
             else -> throw ApiException(response.statusCode, extractErrorMessage(response.body))
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun refreshAccessToken(
         baseUrl: String,
         refreshToken: String,
@@ -104,7 +95,6 @@ class AudiobookshelfApiClient(
         )
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun getLibraries(baseUrl: String, accessToken: String): List<LibrarySummary> {
         val response = executeAuthorized(
             baseUrl = baseUrl,
@@ -128,7 +118,6 @@ class AudiobookshelfApiClient(
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun getLibraryItems(
         baseUrl: String,
         accessToken: String,
@@ -169,7 +158,6 @@ class AudiobookshelfApiClient(
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun getLibraryAuthors(
         baseUrl: String,
         accessToken: String,
@@ -200,7 +188,6 @@ class AudiobookshelfApiClient(
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun createPlaybackSession(
         baseUrl: String,
         accessToken: String,
@@ -267,7 +254,6 @@ class AudiobookshelfApiClient(
         )
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun syncPlaybackSession(
         baseUrl: String,
         accessToken: String,
@@ -283,7 +269,6 @@ class AudiobookshelfApiClient(
         )
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun closePlaybackSession(
         baseUrl: String,
         accessToken: String,
@@ -324,7 +309,6 @@ class AudiobookshelfApiClient(
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun getItemsInProgress(
         baseUrl: String,
         accessToken: String,
@@ -352,7 +336,6 @@ class AudiobookshelfApiClient(
         }
     }
 
-    @Throws(ApiException::class, IOException::class)
     suspend fun getMediaProgress(
         baseUrl: String,
         accessToken: String,
@@ -603,11 +586,6 @@ data class AuthenticatedSession(
     val serverVersion: String?,
     val compatibilityWarningCode: String?,
     val isSupported: Boolean,
-)
-
-data class AuthorizationState(
-    val isAuthorized: Boolean,
-    val session: AuthenticatedSession?,
 )
 
 data class LibrarySummary(

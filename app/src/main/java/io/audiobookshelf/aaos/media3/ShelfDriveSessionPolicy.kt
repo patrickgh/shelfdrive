@@ -22,8 +22,6 @@ internal class ShelfDriveSessionPolicy(
     fun availableSessionCommands(controller: MediaSession.ControllerInfo): SessionCommands {
         val builder = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
-            .add(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
-            .add(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
             .add(SessionCommand(CMD_CYCLE_PLAYBACK_SPEED, Bundle.EMPTY))
         if (!isAppController(controller)) {
             return builder.build()
@@ -39,18 +37,6 @@ internal class ShelfDriveSessionPolicy(
             .build()
     }
 
-    fun availablePlayerCommands(): Player.Commands {
-        return MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
-            .buildUpon()
-            .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-            .remove(Player.COMMAND_SEEK_TO_NEXT)
-            .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
-            .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
-            .remove(Player.COMMAND_SET_SPEED_AND_PITCH)
-            .build()
-    }
-
     fun mediaButtonPreferences(playbackSpeed: Float = DEFAULT_PLAYBACK_SPEED): List<CommandButton> {
         return listOf(
             rewindButton(),
@@ -59,18 +45,10 @@ internal class ShelfDriveSessionPolicy(
         )
     }
 
-    fun customLayout(playbackSpeed: Float = DEFAULT_PLAYBACK_SPEED): List<CommandButton> {
-        return listOf(
-            rewindButton(),
-            playbackSpeedButton(playbackSpeed),
-            forwardButton(),
-        )
-    }
-
     private fun rewindButton(): CommandButton {
         val skipIncrementSeconds = PlaybackPreferences.skipIncrementSeconds(context)
         return CommandButton.Builder(skipBackIcon(skipIncrementSeconds))
-            .setSessionCommand(SessionCommand(CMD_SEEK_BACK, Bundle.EMPTY))
+            .setPlayerCommand(Player.COMMAND_SEEK_BACK)
             .setDisplayName(context.getString(R.string.media_action_rewind, skipIncrementSeconds))
             .setSlots(CommandButton.SLOT_BACK)
             .build()
@@ -79,7 +57,7 @@ internal class ShelfDriveSessionPolicy(
     private fun forwardButton(): CommandButton {
         val skipIncrementSeconds = PlaybackPreferences.skipIncrementSeconds(context)
         return CommandButton.Builder(skipForwardIcon(skipIncrementSeconds))
-            .setSessionCommand(SessionCommand(CMD_SEEK_FORWARD, Bundle.EMPTY))
+            .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
             .setDisplayName(context.getString(R.string.media_action_forward, skipIncrementSeconds))
             .setSlots(CommandButton.SLOT_FORWARD)
             .build()
@@ -122,38 +100,36 @@ internal class ShelfDriveSessionPolicy(
         controller.uid == context.applicationInfo.uid && controller.packageName == context.packageName
 
     companion object {
-        const val CMD_SEEK_BACK = "io.shelfdrive.app.media3.SEEK_BACK"
-        const val CMD_SEEK_FORWARD = "io.shelfdrive.app.media3.SEEK_FORWARD"
         const val CMD_CYCLE_PLAYBACK_SPEED = "io.shelfdrive.app.media3.CYCLE_PLAYBACK_SPEED"
 
         private val PLAYBACK_SPEEDS = listOf(
-            PlaybackSpeedOption(0.8f, "0.8x"),
-            PlaybackSpeedOption(1.0f, "1.0x"),
-            PlaybackSpeedOption(1.2f, "1.2x"),
-            PlaybackSpeedOption(1.5f, "1.5x"),
-            PlaybackSpeedOption(1.8f, "1.8x"),
-            PlaybackSpeedOption(2.0f, "2.0x"),
+            0.8f,
+            1.0f,
+            1.2f,
+            1.5f,
+            1.8f,
+            2.0f,
         )
 
         fun nextPlaybackSpeed(currentSpeed: Float): Float {
-            val currentIndex = PLAYBACK_SPEEDS.indexOfFirst { option ->
-                option.speed.isApproximately(currentSpeed)
+            val currentIndex = PLAYBACK_SPEEDS.indexOfFirst { speed ->
+                speed.isApproximately(currentSpeed)
             }
             val nextIndex = if (currentIndex == -1) {
-                PLAYBACK_SPEEDS.indexOfFirst { option -> option.speed > currentSpeed }.takeIf { it != -1 } ?: 0
+                PLAYBACK_SPEEDS.indexOfFirst { speed -> speed > currentSpeed }.takeIf { it != -1 } ?: 0
             } else {
                 (currentIndex + 1) % PLAYBACK_SPEEDS.size
             }
-            return PLAYBACK_SPEEDS[nextIndex].speed
+            return PLAYBACK_SPEEDS[nextIndex]
         }
 
         private fun playbackSpeedLabel(playbackSpeed: Float): String {
-            return PLAYBACK_SPEEDS.firstOrNull { it.speed.isApproximately(playbackSpeed) }?.label
+            return PLAYBACK_SPEEDS.firstOrNull { it.isApproximately(playbackSpeed) }?.let { "${it}x" }
                 ?: "${playbackSpeed}x"
         }
 
         private fun playbackSpeedIcon(playbackSpeed: Float): Int {
-            val speed = PLAYBACK_SPEEDS.firstOrNull { it.speed.isApproximately(playbackSpeed) }?.speed
+            val speed = PLAYBACK_SPEEDS.firstOrNull { it.isApproximately(playbackSpeed) }
                 ?: playbackSpeed
             return when {
                 speed.isApproximately(0.8f) -> CommandButton.ICON_PLAYBACK_SPEED_0_8
@@ -171,10 +147,5 @@ internal class ShelfDriveSessionPolicy(
         }
     }
 }
-
-private data class PlaybackSpeedOption(
-    val speed: Float,
-    val label: String,
-)
 
 private const val DEFAULT_PLAYBACK_SPEED = 1.0f

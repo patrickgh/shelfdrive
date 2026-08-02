@@ -209,14 +209,6 @@ class SettingsActivity : AppCompatActivity() {
 
     internal fun currentState(): SettingsState = state.copy(commandChannelReady = mediaController != null)
 
-    private fun requestAuthState() {
-        sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult)
-    }
-
-    private fun requestSyncState() {
-        sendCommand(SyncCommands.CMD_GET_SYNC_STATE, null, ::handleSyncResult)
-    }
-
     private fun requestCacheState() {
         sendCommand(CacheCommands.CMD_GET_CACHE_STATE, null, ::handleCacheResult)
     }
@@ -296,7 +288,7 @@ class SettingsActivity : AppCompatActivity() {
                     controllerFuture = null
                     diagnosticEventLogger.record("settings_controller_connect_success")
                     renderState()
-                    requestAuthState()
+                    sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult)
                     requestCacheState()
                 }.onFailure { exception ->
                     controllerFuture = null
@@ -353,7 +345,7 @@ class SettingsActivity : AppCompatActivity() {
         )
         renderState()
         if (syncSnapshot == null) {
-            requestSyncState()
+            sendCommand(SyncCommands.CMD_GET_SYNC_STATE, null, ::handleSyncResult)
         }
         requestCacheState()
     }

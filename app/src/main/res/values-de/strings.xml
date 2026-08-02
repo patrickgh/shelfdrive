@@ -84,10 +84,6 @@
     <string name="settings_catalog_updated_and_age">Zuletzt aktualisiert: %1$s · Stand: %2$s</string>
     <string name="settings_catalog_stale_after_failed_sync">Der letzte erfolgreiche Stand bleibt verfügbar.</string>
     <string name="settings_server_version_summary">Serverversion: %1$s</string>
-    <string name="settings_cache_age_now">gerade eben</string>
-    <string name="settings_cache_age_minutes">vor %1$d min</string>
-    <string name="settings_cache_age_hours">vor %1$d h</string>
-    <string name="settings_cache_age_days">vor %1$d d</string>
     <string name="status_server_unreachable">Server momentan nicht erreichbar. Inhalte können veraltet sein.</string>
     <string name="status_catalog_sync_failed">Server nicht erreichbar. Der letzte Katalogstand bleibt verfügbar.</string>
     <string name="status_session_expired">Sitzung abgelaufen. Bitte erneut anmelden.</string>
@@ -107,19 +103,4 @@
     <string name="media_root_books">Hörbücher</string>
     <string name="media_root_authors">Autoren</string>
     <string name="media_auth_required_title">Anmeldung erforderlich</string>
-    <string name="media_connection_problem_title">Verbindungsproblem</string>
-    <string name="media_settings_hint">Bitte Verbindung in den Einstellungen prüfen.</string>
-    <string name="media_sync_running_title">Synchronisierung läuft</string>
-    <string name="media_sync_running_summary">Der Katalog wird gerade vom Server geladen.</string>
-    <string name="media_recent_empty_title">Noch nichts begonnen</string>
-    <string name="media_recent_empty_summary">Sobald auf dem Server begonnene Hörbücher vorhanden sind, erscheinen sie hier.</string>
-    <string name="media_books_empty_title">Keine Hörbücher gefunden</string>
-    <string name="media_books_empty_summary">Der aktuelle Sync enthält noch keine abspielbaren Hörbücher.</string>
-    <string name="media_search_empty_title">Keine Suchergebnisse</string>
-    <string name="media_search_empty_summary">Für „%1$s“ wurde kein Hörbuch gefunden.</string>
-    <string name="media_authors_empty_title">Keine Autoren gefunden</string>
-    <string name="media_authors_empty_summary">Im aktuellen Katalog sind noch keine Autoren verfügbar.</string>
-    <string name="media_author_missing_title">Autor nicht gefunden</string>
-    <string name="media_author_missing_summary">Der ausgewählte Autor ist nicht mehr im lokalen Katalog vorhanden.</string>
-    <string name="media_author_books_empty_summary">Für diesen Autor sind aktuell keine abspielbaren Hörbücher im Katalog.</string>
 </resources>

@@ -87,10 +87,6 @@
     <string name="settings_catalog_updated_and_age">Last updated: %1$s · Age: %2$s</string>
     <string name="settings_catalog_stale_after_failed_sync">The last successful catalog remains available.</string>
     <string name="settings_server_version_summary">Server version: %1$s</string>
-    <string name="settings_cache_age_now">just now</string>
-    <string name="settings_cache_age_minutes">%1$d min ago</string>
-    <string name="settings_cache_age_hours">%1$d h ago</string>
-    <string name="settings_cache_age_days">%1$d d ago</string>
     <string name="status_server_unreachable">Server is currently unreachable. Content may be outdated.</string>
     <string name="status_catalog_sync_failed">Server is unreachable. The last catalog remains available.</string>
     <string name="status_session_expired">Session expired. Please sign in again.</string>
@@ -110,19 +106,4 @@
     <string name="media_root_books">Audiobooks</string>
     <string name="media_root_authors">Authors</string>
     <string name="media_auth_required_title">Login required</string>
-    <string name="media_connection_problem_title">Connection problem</string>
-    <string name="media_settings_hint">Please check the connection in Settings.</string>
-    <string name="media_sync_running_title">Sync in progress</string>
-    <string name="media_sync_running_summary">The catalog is currently loading from the server.</string>
-    <string name="media_recent_empty_title">Nothing started yet</string>
-    <string name="media_recent_empty_summary">Audiobooks started on the server will appear here.</string>
-    <string name="media_books_empty_title">No audiobooks found</string>
-    <string name="media_books_empty_summary">The current sync does not contain playable audiobooks yet.</string>
-    <string name="media_search_empty_title">No search results</string>
-    <string name="media_search_empty_summary">No audiobook found for \"%1$s\".</string>
-    <string name="media_authors_empty_title">No authors found</string>
-    <string name="media_authors_empty_summary">No authors are available in the current catalog yet.</string>
-    <string name="media_author_missing_title">Author not found</string>
-    <string name="media_author_missing_summary">The selected author is no longer available in the local catalog.</string>
-    <string name="media_author_books_empty_summary">There are currently no playable audiobooks for this author in the catalog.</string>
 </resources>

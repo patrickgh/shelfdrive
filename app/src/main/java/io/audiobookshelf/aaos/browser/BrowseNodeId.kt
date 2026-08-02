@@ -11,10 +11,6 @@ sealed interface BrowseNodeId {
         override fun serialize(): String = "recent"
     }
 
-    data object Resume : BrowseNodeId {
-        override fun serialize(): String = "resume"
-    }
-
     data object Books : BrowseNodeId {
         override fun serialize(): String = "books"
     }
@@ -47,7 +43,6 @@ sealed interface BrowseNodeId {
         fun parse(rawValue: String): BrowseNodeId? {
             if (rawValue == Root.serialize()) return Root
             if (rawValue == Recent.serialize()) return Recent
-            if (rawValue == Resume.serialize()) return Resume
             if (rawValue == Books.serialize()) return Books
             if (rawValue == Authors.serialize()) return Authors
 

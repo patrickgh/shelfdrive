@@ -7,20 +7,15 @@ import json
 import mimetypes
 import os
 from pathlib import Path
+import shutil
 import time
 from urllib.parse import unquote
 
 
 UPLOAD_DIR = Path(os.environ.get("DIAGNOSTICS_UPLOAD_DIR", "/data/uploads"))
 MAX_UPLOAD_BYTES = int(os.environ.get("DIAGNOSTICS_MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
-UPLOAD_USERNAME = os.environ.get(
-    "DIAGNOSTICS_UPLOAD_USERNAME",
-    os.environ.get("DIAGNOSTICS_BASIC_USERNAME", "shelfdrive-upload"),
-)
-UPLOAD_PASSWORD = os.environ.get(
-    "DIAGNOSTICS_UPLOAD_PASSWORD",
-    os.environ.get("DIAGNOSTICS_BASIC_PASSWORD", "sd-upload-2026-K7mQ4p9v"),
-)
+UPLOAD_USERNAME = os.environ.get("DIAGNOSTICS_UPLOAD_USERNAME", "shelfdrive-upload")
+UPLOAD_PASSWORD = os.environ.get("DIAGNOSTICS_UPLOAD_PASSWORD", "sd-upload-2026-K7mQ4p9v")
 DOWNLOAD_USERNAME = os.environ.get("DIAGNOSTICS_DOWNLOAD_USERNAME", "shelfdrive-download")
 DOWNLOAD_PASSWORD = os.environ.get("DIAGNOSTICS_DOWNLOAD_PASSWORD", "sd-download-2026-P8wN3x2r")
 
@@ -123,11 +118,7 @@ class DiagnosticsHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(size))
         self.end_headers()
         with path.open("rb") as handle:
-            while True:
-                chunk = handle.read(64 * 1024)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
+            shutil.copyfileobj(handle, self.wfile)
 
     def is_authorized(self, expected_username, expected_password):
         header = self.headers.get("Authorization", "")

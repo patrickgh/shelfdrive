@@ -152,7 +152,7 @@ class DiagnosticsPackageBuilder(
             put("packageName", packageName)
             put("installed", packageInfo != null)
             put("versionName", packageInfo?.versionName)
-            put("versionCode", packageInfo?.longVersionCodeCompat())
+            put("versionCode", packageInfo?.longVersionCode)
             put("enabled", applicationInfo?.enabled)
             put("systemApp", applicationInfo?.isSystemApp())
             put("updatedSystemApp", applicationInfo?.isUpdatedSystemApp())
@@ -216,8 +216,6 @@ class DiagnosticsPackageBuilder(
             }
         }
     }
-
-    private fun PackageInfo.longVersionCodeCompat(): Long = longVersionCode
 
     private fun ApplicationInfo.isSystemApp(): Boolean = flags and ApplicationInfo.FLAG_SYSTEM != 0
 
