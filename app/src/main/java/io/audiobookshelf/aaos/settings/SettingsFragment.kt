@@ -218,7 +218,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
 
         findPreference<Preference>(KEY_APP_VERSION)?.setOnPreferenceClickListener {
-            if (!areDiagnosticsVisible) {
+            if (BuildConfig.DIAGNOSTICS_ENABLED && !areDiagnosticsVisible) {
                 consecutiveVersionClicks += 1
                 if (consecutiveVersionClicks >= DIAGNOSTICS_UNLOCK_CLICK_COUNT) {
                     areDiagnosticsVisible = true
@@ -280,7 +280,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun renderDiagnosticsVisibility() {
-        findPreference<PreferenceCategory>(KEY_DIAGNOSTICS_CATEGORY)?.isVisible = areDiagnosticsVisible
+        findPreference<PreferenceCategory>(KEY_DIAGNOSTICS_CATEGORY)?.isVisible =
+            BuildConfig.DIAGNOSTICS_ENABLED && areDiagnosticsVisible
     }
 
     private fun resetDiagnosticsUnlockClicks() {

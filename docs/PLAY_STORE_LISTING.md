@@ -177,9 +177,7 @@ and includes no advertising, analytics SDKs or tracking SDKs.
 
 ### Data Safety Draft
 
-- Data collected by the developer: none during normal app use. If the user
-  explicitly sends diagnostics, a diagnostic ZIP is uploaded to the diagnostics
-  endpoint shown in Settings.
+- Data collected by the developer: none during normal app use.
 - Data shared with third parties: none by the app developer.
 - Data processed locally on device: server URL, credentials/tokens, catalog
   metadata, artwork cache, playback state and cache data.

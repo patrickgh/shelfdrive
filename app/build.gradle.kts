@@ -6,6 +6,16 @@ val keystoreProperties = Properties().apply {
         keystorePropertiesFile.inputStream().use(::load)
     }
 }
+val productionVersionCode = 34
+val productionVersionName = "1.0.0-rc2"
+val diagnosticsUploadUrl = keystoreProperties.getProperty("diagnosticsUploadUrl").orEmpty()
+val diagnosticsUploadPassword = keystoreProperties.getProperty("diagnosticsUploadPassword").orEmpty()
+
+fun buildConfigString(value: String): String = "\"" + value
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+    .replace("\n", "\\n")
+    .replace("\r", "\\r") + "\""
 
 plugins {
     alias(libs.plugins.android.application)
@@ -20,8 +30,11 @@ android {
         applicationId = "io.shelfdrive.app"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 27
-        versionName = "0.6.4"
+        versionCode = productionVersionCode
+        versionName = productionVersionName
+        buildConfigField("boolean", "DIAGNOSTICS_ENABLED", "false")
+        buildConfigField("String", "DIAGNOSTICS_UPLOAD_URL", buildConfigString(""))
+        buildConfigField("String", "DIAGNOSTICS_UPLOAD_PASSWORD", buildConfigString(""))
 
         vectorDrawables {
             useSupportLibrary = true
@@ -30,6 +43,22 @@ android {
 
     buildFeatures {
         buildConfig = true
+    }
+
+    flavorDimensions += "diagnostics"
+
+    productFlavors {
+        create("prod") {
+            dimension = "diagnostics"
+        }
+        create("diagnostics") {
+            dimension = "diagnostics"
+            versionCode = productionVersionCode + 1
+            versionNameSuffix = "-diagnostics"
+            buildConfigField("boolean", "DIAGNOSTICS_ENABLED", "true")
+            buildConfigField("String", "DIAGNOSTICS_UPLOAD_URL", buildConfigString(diagnosticsUploadUrl))
+            buildConfigField("String", "DIAGNOSTICS_UPLOAD_PASSWORD", buildConfigString(diagnosticsUploadPassword))
+        }
     }
 
     signingConfigs {
@@ -63,6 +92,17 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+val validateDiagnosticsUploadConfig = tasks.register("validateDiagnosticsUploadConfig") {
+    doLast {
+        check(diagnosticsUploadUrl.isNotBlank()) { "diagnosticsUploadUrl is missing from keystore.properties." }
+        check(diagnosticsUploadPassword.isNotBlank()) { "diagnosticsUploadPassword is missing from keystore.properties." }
+    }
+}
+
+tasks.matching { it.name == "bundleDiagnosticsRelease" }.configureEach {
+    dependsOn(validateDiagnosticsUploadConfig)
 }
 
 dependencies {

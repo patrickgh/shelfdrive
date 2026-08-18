@@ -74,11 +74,14 @@ class PlaybackStateStorage(context: Context) {
         }
         return runCatching {
             val array = JSONArray(raw)
-            buildList {
+            val queueSize = array.length()
+            val queue = buildList {
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
                     val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
-                    val contentUrl = item.optString("contentUrl").takeIf { it.isNotBlank() } ?: continue
+                    val contentUrl = item.optString("contentUrl")
+                        .takeIf(::isShelfDrivePlaybackUri)
+                        ?: continue
                     add(
                         PlaybackTrack(
                             id = id,
@@ -91,6 +94,7 @@ class PlaybackStateStorage(context: Context) {
                     )
                 }
             }
+            queue.takeIf { it.size == queueSize }.orEmpty()
         }.getOrDefault(emptyList())
     }
 

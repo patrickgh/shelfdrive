@@ -237,10 +237,12 @@ internal class ShelfDriveMediaCatalog(
                 MediaMetadata.Builder()
                     .setTitle(book.title)
                     .setArtist(subtitle)
+                    .setAuthor(book.authorDisplay)
                     .setAlbumTitle(book.title)
                     .setArtworkUri(ArtworkUriFactory.bookCover(book.id, ArtworkUriFactory.signatureFor(book.coverPath)))
                     .setIsBrowsable(false)
                     .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                     .setDurationMs(book.durationMs)
                     .setExtras(childStyleExtras())
                     .build(),

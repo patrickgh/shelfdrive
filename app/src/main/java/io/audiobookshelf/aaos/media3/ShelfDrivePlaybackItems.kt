@@ -41,11 +41,13 @@ private fun playbackMetadata(
     return MediaMetadata.Builder()
         .setTitle(title)
         .setArtist(author)
+        .setAuthor(author)
         .setAlbumTitle(albumTitle)
         .setAlbumArtist(author)
         .setArtworkUri(artworkUri)
         .setIsBrowsable(false)
         .setIsPlayable(true)
+        .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
         .setDurationMs(durationMs)
         .build()
 }

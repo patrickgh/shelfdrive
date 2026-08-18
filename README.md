@@ -10,7 +10,6 @@
 
 <p align="center">
   <a href="https://github.com/patrickgh/shelfdrive/releases/latest"><img alt="Latest GitHub Release" src="https://img.shields.io/github/v/release/patrickgh/shelfdrive?style=flat-square"/></a>
-  <img alt="Status" src="https://img.shields.io/badge/status-beta-2563eb">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20Automotive%20OS-3DDC84?logo=android">
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white">
   <img alt="minSdk" src="https://img.shields.io/badge/minSdk-29-2563eb?logo=android">
@@ -32,12 +31,15 @@ are provided through Android media APIs and rendered by the vehicle media host.
 
 ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 
-> [!WARNING]
-> AI Disclaimer:
-> This project was built with substantial AI assistance. It works for my environment/use cases but may fail on other cars. The code, documentation, architecture, and implementation details should be reviewed before production use.
-
 > [!NOTE]
-> The app is currently only available via my closed test track on the Google Play Store. If you accept the BETA stage you can reach out (dsaos9632@gmail.com) and get invited to try it yourself. A public release via Play Store is planned after completion of the test.
+> AI Disclaimer:
+> This project was built with substantial AI assistance. It is tested against my environment and use cases, and may behave differently on other vehicles.
+
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=io.shelfdrive.app">
+    <img alt="Get it on Google Play" src="docs/assets/google-play-badge.png" width="239">
+  </a>
+</p>
 
 ## Screenshots
 
@@ -45,19 +47,15 @@ ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
 | --- | --- | --- |
 | <img src="docs/screenshots/library.jpg" alt="ShelfDrive library browser on Android Automotive OS" width="260"> | <img src="docs/screenshots/now-playing.jpg" alt="ShelfDrive now playing screen on Android Automotive OS" width="260"> | <img src="docs/screenshots/settings.jpg" alt="ShelfDrive settings screen" width="260"> |
 
-## Status
+## Contributing
 
-ShelfDrive is beta software for personal testing on Android Automotive OS.
+Feedback, bug reports, and feature requests are very welcome via
+[GitHub Issues](https://github.com/patrickgh/shelfdrive/issues). If you do not
+have a GitHub account or prefer email, contact `dsaos9632@gmail.com`.
 
-Current app metadata:
-
-- App name: `ShelfDrive`
-- Application ID: `io.shelfdrive.app`
-- Minimum SDK: `29`
-- Target SDK: `35`
-- Supported form factor: Android Automotive OS
-- Supported Audiobookshelf media type: book libraries
-- Languages: English and German
+Pull requests are welcome as well. Please keep the AAOS media-host model in
+mind: ShelfDrive should behave like a native automotive media app and avoid
+custom driver-facing playback UI where the platform already provides one.
 
 ## Features
 
@@ -73,7 +71,7 @@ Current app metadata:
 - Keep Audiobookshelf as the source of truth for listening progress.
 - Restore the last local playback state after app or vehicle restarts, including immediate playback from cached audio while the server is unavailable.
 - Optionally rewind 15 seconds when pausing, so resume starts with a short recap.
-- Configure server credentials and playback preferences, inspect connection and sync state, manage the cache, and send diagnostics from Settings.
+- Configure server credentials and playback preferences, inspect connection and sync state, and manage the cache from Settings.
 - Cache catalog data, artwork, and up to 128 MiB of audio locally, with a time-based forward buffer for fast resumes and network handovers.
 
 ## Non-Goals
@@ -159,7 +157,6 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Configurable skip interval.
 - 15-second rewind-on-pause toggle.
 - Cache usage and clear-cache action.
-- Startup diagnostics and an explicit diagnostic-package upload action.
 - App version.
 
 ## Cache Policy
@@ -178,9 +175,6 @@ these files.
 When the active book changes, audio entries from other books are removed so the
 full 128 MiB remains available for current playback. Measured track bitrates and
 the resulting capacity estimate are recorded before the cache size is reconsidered.
-Diagnostics retain errors for up to 48 hours and record the affected track,
-remaining track duration, last transition, contiguous cache coverage, span count,
-and forward-cache progress without storing access tokens.
 
 The caches support local browsing, media host presentation, immediate resumes,
 and playback through temporary network outages for audio that has already been
@@ -226,41 +220,41 @@ your Android SDK.
 Build a debug APK:
 
 ```bash
-./gradlew assembleDebug
+./gradlew assembleProdDebug
 ```
 
 Run unit tests:
 
 ```bash
-./gradlew testDebugUnitTest
+./gradlew testProdDebugUnitTest
 ```
 
 Run lint:
 
 ```bash
-./gradlew lintDebug
+./gradlew lintProdDebug
 ```
 
 Run the full local verification used before release builds:
 
 ```bash
-./gradlew lintDebug testDebugUnitTest assembleRelease bundleRelease
+./gradlew lintProdDebug testProdDebugUnitTest bundleProdRelease
 ```
 
 ## Release Builds
 
 Release signing uses a local, untracked `keystore.properties` file. Copy
 `keystore.properties.example` to `keystore.properties`, fill in your upload-key
-data, then build the Android App Bundle:
+data, then build the production Android App Bundle:
 
 ```bash
-./gradlew bundleRelease
+./gradlew bundleProdRelease
 ```
 
 The Play Console artifact is:
 
 ```text
-app/build/outputs/bundle/release/app-release.aab
+app/build/outputs/bundle/prodRelease/app-prod-release.aab
 ```
 
 If `keystore.properties` does not exist, Gradle may still create an unsigned
@@ -287,12 +281,6 @@ app/src/main/java/io/audiobookshelf/aaos/settings    Settings activity
 app/src/main/java/io/audiobookshelf/aaos/status      User-visible status mapping
 app/src/main/java/io/audiobookshelf/aaos/sync        Catalog synchronization
 ```
-
-## Contributing
-
-Issues and pull requests are welcome. Please keep the AAOS media-host model in
-mind: ShelfDrive should behave like a native automotive media app and avoid
-custom driver-facing playback UI where the platform already provides one.
 
 ## License
 

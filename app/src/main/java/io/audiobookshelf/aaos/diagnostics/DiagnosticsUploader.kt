@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.diagnostics
 
 import android.util.Base64
 import androidx.core.net.toUri
+import io.audiobookshelf.aaos.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -12,6 +13,9 @@ import java.util.UUID
 
 class DiagnosticsUploader {
     suspend fun upload(uploadUrl: String, packageFile: File): DiagnosticsUploadResult = withContext(Dispatchers.IO) {
+        if (!BuildConfig.DIAGNOSTICS_ENABLED) {
+            throw IOException("Diagnostics are disabled.")
+        }
         val normalizedUrl = validateUploadUrl(uploadUrl)
         val boundary = "ShelfDriveDiagnostics-${UUID.randomUUID()}"
         val connection = (URL(normalizedUrl).openConnection() as HttpURLConnection).apply {
@@ -72,7 +76,6 @@ class DiagnosticsUploader {
 
     companion object {
         private const val BASIC_USERNAME = "shelfdrive-upload"
-        private const val BASIC_PASSWORD = "sd-upload-2026-K7mQ4p9v"
         private const val DEFAULT_UPLOAD_PATH = "/upload"
         private const val CONNECT_TIMEOUT_MS = 10_000
         private const val READ_TIMEOUT_MS = 20_000
@@ -80,7 +83,11 @@ class DiagnosticsUploader {
     }
 
     private fun basicAuthorizationHeader(): String {
-        val credentials = "$BASIC_USERNAME:$BASIC_PASSWORD"
+        val password = BuildConfig.DIAGNOSTICS_UPLOAD_PASSWORD
+        if (password.isBlank()) {
+            throw IOException("Diagnostics upload password is not configured.")
+        }
+        val credentials = "$BASIC_USERNAME:$password"
         return "Basic " + Base64.encodeToString(credentials.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
     }
 }

@@ -11,6 +11,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.common.util.concurrent.ListenableFuture
+import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthSnapshot
@@ -53,13 +54,13 @@ class SettingsActivity : AppCompatActivity() {
     private var state = SettingsState()
     private var isStarted: Boolean = false
     private var reconnectAttempt: Int = 0
-    private lateinit var diagnosticEventLogger: DiagnosticEventLogger
+    private var diagnosticEventLogger: DiagnosticEventLogger? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         delegate.setLocalNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         super.onCreate(savedInstanceState)
-        diagnosticEventLogger = DiagnosticEventLogger(this)
-        diagnosticEventLogger.record("settings_created")
+        diagnosticEventLogger = if (BuildConfig.DIAGNOSTICS_ENABLED) DiagnosticEventLogger(this) else null
+        diagnosticEventLogger?.record("settings_created")
         setContentView(R.layout.activity_settings)
 
         findViewById<MaterialToolbar>(R.id.toolbar).apply {
@@ -77,14 +78,16 @@ class SettingsActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         isStarted = true
-        val diagnosticsUploadStorage = DiagnosticsUploadStorage(this)
-        if (diagnosticsUploadStorage.load().lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
-            diagnosticsUploadStorage.recordUploadFinished(
-                DiagnosticsUploadStatus.FAILED,
-                "Previous upload was interrupted.",
-            )
+        if (BuildConfig.DIAGNOSTICS_ENABLED) {
+            val diagnosticsUploadStorage = DiagnosticsUploadStorage(this)
+            if (diagnosticsUploadStorage.load().lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
+                diagnosticsUploadStorage.recordUploadFinished(
+                    DiagnosticsUploadStatus.FAILED,
+                    "Previous upload was interrupted.",
+                )
+            }
         }
-        diagnosticEventLogger.record("settings_started")
+        diagnosticEventLogger?.record("settings_started")
         renderState()
         connectMediaController()
     }
@@ -96,9 +99,7 @@ class SettingsActivity : AppCompatActivity() {
         controllerFuture = null
         mediaController?.release()
         mediaController = null
-        if (::diagnosticEventLogger.isInitialized) {
-            diagnosticEventLogger.record("settings_stopped")
-        }
+        diagnosticEventLogger?.record("settings_stopped")
         super.onStop()
     }
 
@@ -156,11 +157,13 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     internal fun updateDiagnosticsUploadUrl(uploadUrl: String) {
+        if (!BuildConfig.DIAGNOSTICS_ENABLED) return
         DiagnosticsUploadStorage(this).saveUploadUrl(uploadUrl)
         renderState()
     }
 
     internal fun performDiagnosticsUpload() {
+        if (!BuildConfig.DIAGNOSTICS_ENABLED) return
         val storage = DiagnosticsUploadStorage(this)
         val uploadUrl = storage.load().uploadUrl
         if (uploadUrl.isBlank() || state.diagnosticsUploadSnapshot.lastUploadStatus == DiagnosticsUploadStatus.RUNNING) {
@@ -172,7 +175,7 @@ class SettingsActivity : AppCompatActivity() {
         renderState()
 
         activityScope.launch {
-            DiagnosticEventLogger(this@SettingsActivity).record("diagnostics_upload_started")
+            diagnosticEventLogger?.record("diagnostics_upload_started")
             runCatching {
                 val startupSnapshot = StartupDiagnosticsStorage(this@SettingsActivity).load()
                 val uploadSnapshot = storage.load()
@@ -189,13 +192,13 @@ class SettingsActivity : AppCompatActivity() {
                     DiagnosticsUploadStatus.SUCCESS,
                     "HTTP ${result.statusCode}: ${result.message}",
                 )
-                DiagnosticEventLogger(this@SettingsActivity).record("diagnostics_upload_success")
+                diagnosticEventLogger?.record("diagnostics_upload_success")
             }.onFailure { exception ->
                 storage.recordUploadFinished(
                     DiagnosticsUploadStatus.FAILED,
                     exception.message ?: exception::class.java.simpleName,
                 )
-                DiagnosticEventLogger(this@SettingsActivity).record(
+                diagnosticEventLogger?.record(
                     "diagnostics_upload_failed",
                     mapOf(
                         "exception" to exception::class.java.simpleName,
@@ -221,7 +224,7 @@ class SettingsActivity : AppCompatActivity() {
     ) {
         val controller = mediaController
         if (controller == null) {
-            diagnosticEventLogger.record("settings_command_without_controller", mapOf("command" to command))
+            diagnosticEventLogger?.record("settings_command_without_controller", mapOf("command" to command))
             onFailure()
             connectMediaController()
             renderState()
@@ -236,7 +239,7 @@ class SettingsActivity : AppCompatActivity() {
                 runCatching {
                     future.get()
                 }.onSuccess { result ->
-                    diagnosticEventLogger.record(
+                    diagnosticEventLogger?.record(
                         "settings_command_success",
                         mapOf(
                             "command" to command,
@@ -247,7 +250,7 @@ class SettingsActivity : AppCompatActivity() {
                 }.onFailure { exception ->
                     state = state.copy(loginInProgress = false)
                     onFailure()
-                    diagnosticEventLogger.record(
+                    diagnosticEventLogger?.record(
                         "settings_command_failed",
                         mapOf(
                             "command" to command,
@@ -273,7 +276,7 @@ class SettingsActivity : AppCompatActivity() {
         )
         val future = MediaController.Builder(this, token).buildAsync()
         controllerFuture = future
-        diagnosticEventLogger.record("settings_controller_connect_started")
+        diagnosticEventLogger?.record("settings_controller_connect_started")
         future.addListener(
             {
                 runCatching {
@@ -286,7 +289,7 @@ class SettingsActivity : AppCompatActivity() {
                     reconnectAttempt = 0
                     mediaController = controller
                     controllerFuture = null
-                    diagnosticEventLogger.record("settings_controller_connect_success")
+                    diagnosticEventLogger?.record("settings_controller_connect_success")
                     renderState()
                     sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult)
                     requestCacheState()
@@ -294,7 +297,7 @@ class SettingsActivity : AppCompatActivity() {
                     controllerFuture = null
                     mediaController = null
                     state = state.copy(loginInProgress = false)
-                    diagnosticEventLogger.record(
+                    diagnosticEventLogger?.record(
                         "settings_controller_connect_failed",
                         mapOf(
                             "exception" to exception::class.java.simpleName,
@@ -316,7 +319,7 @@ class SettingsActivity : AppCompatActivity() {
         val delayMs = (RECONNECT_INITIAL_DELAY_MS shl reconnectAttempt.coerceAtMost(RECONNECT_MAX_SHIFT))
             .coerceAtMost(RECONNECT_MAX_DELAY_MS)
         reconnectAttempt += 1
-        diagnosticEventLogger.record(
+        diagnosticEventLogger?.record(
             "settings_controller_reconnect_scheduled",
             mapOf("delayMs" to delayMs.toString()),
         )
@@ -374,8 +377,16 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun renderState() {
         state = state.copy(
-            diagnosticsSnapshot = StartupDiagnosticsStorage(this).load(),
-            diagnosticsUploadSnapshot = DiagnosticsUploadStorage(this).load(),
+            diagnosticsSnapshot = if (BuildConfig.DIAGNOSTICS_ENABLED) {
+                StartupDiagnosticsStorage(this).load()
+            } else {
+                StartupDiagnosticsSnapshot()
+            },
+            diagnosticsUploadSnapshot = if (BuildConfig.DIAGNOSTICS_ENABLED) {
+                DiagnosticsUploadStorage(this).load()
+            } else {
+                DiagnosticsUploadSnapshot()
+            },
             commandChannelReady = mediaController != null,
         )
         (supportFragmentManager.findFragmentById(R.id.settings_container) as? SettingsFragment)

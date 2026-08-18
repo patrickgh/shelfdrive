@@ -32,25 +32,41 @@ storeFile=shelfdrive-upload.jks
 storePassword=your-store-password
 keyAlias=shelfdrive-upload
 keyPassword=your-key-password
+diagnosticsUploadUrl=https://your-diagnostics-endpoint/
+diagnosticsUploadPassword=your-diagnostics-upload-password
 ```
 
 Both `keystore.properties` and `*.jks` are ignored by git.
 
 ## 3. Build The Release Bundle
 
-Run the release checks and bundle build:
+Run the production release checks and bundle build:
 
 ```bash
-./gradlew lintDebug testDebugUnitTest assembleRelease bundleRelease
+./gradlew lintProdDebug testProdDebugUnitTest bundleProdRelease
 ```
 
 The Play upload artifact is the Android App Bundle:
 
 ```text
-app/build/outputs/bundle/release/app-release.aab
+app/build/outputs/bundle/prodRelease/app-prod-release.aab
 ```
 
 Use the AAB for Google Play. APKs are useful for local debugging, but new Play Store apps are published with App Bundles.
+
+For the private diagnostics test track, build the separate artifact:
+
+```bash
+./gradlew lintDiagnosticsDebug testDiagnosticsDebugUnitTest bundleDiagnosticsRelease
+```
+
+```text
+app/build/outputs/bundle/diagnosticsRelease/app-diagnostics-release.aab
+```
+
+The diagnostics AAB requires the two diagnostics properties above and has a
+higher version code than the matching production AAB. Testers eligible for both
+tracks receive the highest version code.
 
 ## 4. Create The Play Console App
 
@@ -107,4 +123,4 @@ If the app does not appear immediately:
 - `res/xml/automotive_app_desc.xml` declares media support.
 - Cleartext HTTP is currently allowed for private Audiobookshelf LAN servers. Prefer HTTPS for broader testing or public release.
 - Release signing is configured only when `keystore.properties` exists, so debug builds keep working without local release secrets.
-- If `keystore.properties` is missing, `bundleRelease` can still produce an unsigned AAB for compile verification. Google Play requires a bundle signed with your upload key.
+- If `keystore.properties` is missing, `bundleProdRelease` can still produce an unsigned AAB for compile verification. Google Play requires a bundle signed with your upload key.

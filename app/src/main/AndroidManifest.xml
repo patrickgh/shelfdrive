@@ -7,6 +7,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
+    <queries>
+        <package android:name="com.android.car" />
+        <package android:name="com.android.car.media" />
+        <package android:name="com.google.android.apps.automotive.templates.host" />
+        <package android:name="com.spotify.music" />
+        <package android:name="com.volvocars.launcher" />
+        <package android:name="com.volvocars.mediaplaybackcontrolservice" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:appCategory="audio"

@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.diagnostics
 
 import android.content.Context
 import androidx.core.content.edit
+import io.audiobookshelf.aaos.BuildConfig
 
 class DiagnosticsUploadStorage(context: Context) {
     private val sharedPreferences = context.applicationContext.getSharedPreferences(FILE_NAME, Context.MODE_PRIVATE)
@@ -10,7 +11,7 @@ class DiagnosticsUploadStorage(context: Context) {
         return DiagnosticsUploadSnapshot(
             uploadUrl = sharedPreferences.getString(KEY_UPLOAD_URL, null)
                 ?.takeIf { it.isNotBlank() }
-                ?: DEFAULT_UPLOAD_URL,
+                ?: BuildConfig.DIAGNOSTICS_UPLOAD_URL,
             lastUploadStartedAt = sharedPreferences.getLongOrNull(KEY_LAST_UPLOAD_STARTED_AT),
             lastUploadFinishedAt = sharedPreferences.getLongOrNull(KEY_LAST_UPLOAD_FINISHED_AT),
             lastUploadStatus = sharedPreferences.getString(KEY_LAST_UPLOAD_STATUS, null)
@@ -52,8 +53,6 @@ class DiagnosticsUploadStorage(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_UPLOAD_URL = "https://shelfdev.mooo.com:23377/"
-
         private const val FILE_NAME = "diagnostics_upload"
         private const val KEY_UPLOAD_URL = "upload_url"
         private const val KEY_LAST_UPLOAD_STARTED_AT = "last_upload_started_at"

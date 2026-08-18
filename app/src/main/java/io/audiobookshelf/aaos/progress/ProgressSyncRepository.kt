@@ -67,7 +67,7 @@ class ProgressSyncRepository(
         } catch (_: AuthenticationRequiredException) {
             ServerProgressLookup.Unavailable
         } catch (exception: IOException) {
-            Log.w(TAG, "Server progress check failed for $bookId.", exception)
+            Log.w(TAG, "Server progress check failed.", exception)
             diagnosticEventLogger?.record(
                 "progress_check_failed",
                 mapOf("bookId" to bookId, "reason" to exception.javaClass.simpleName),
@@ -124,12 +124,12 @@ class ProgressSyncRepository(
                         sessionMissing = true,
                     )
                 } else {
-                    Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
+                    Log.w(TAG, "Playback session sync failed.", exception)
                     recordQueuedProgress(snapshot.bookId, "api_${exception.statusCode}")
                     ProgressUploadResult(uploaded = false, snapshot.playbackSessionId)
                 }
             } catch (exception: IOException) {
-                Log.w(TAG, "Playback session sync failed for ${snapshot.bookId}.", exception)
+                Log.w(TAG, "Playback session sync failed.", exception)
                 recordQueuedProgress(snapshot.bookId, exception.javaClass.simpleName)
                 ProgressUploadResult(uploaded = false, snapshot.playbackSessionId)
             }
@@ -158,7 +158,7 @@ class ProgressSyncRepository(
             val progress = runCatching {
                 apiClient.getMediaProgress(context.baseUrl, context.accessToken, item.bookId)
             }.getOrElse { exception ->
-                Log.w(TAG, "Skipping progress refresh for ${item.bookId}", exception)
+                Log.w(TAG, "Skipping progress refresh.", exception)
                 null
             } ?: return@forEach
 
@@ -186,7 +186,7 @@ class ProgressSyncRepository(
         val existing = database.mediaProgressDao().getByBookId(snapshot.bookId)
         val catalogBook = database.bookDao().getPlayableById(snapshot.bookId)
         if (catalogBook == null) {
-            Log.w(TAG, "Skipping local progress cache for unknown book ${snapshot.bookId}")
+            Log.w(TAG, "Skipping local progress cache for unknown book.")
             return null
         }
         val durationMs = snapshot.durationMs

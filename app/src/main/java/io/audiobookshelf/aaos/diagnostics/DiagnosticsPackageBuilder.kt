@@ -30,6 +30,8 @@ class DiagnosticsPackageBuilder(
         startupSnapshot: StartupDiagnosticsSnapshot,
         uploadSnapshot: DiagnosticsUploadSnapshot,
     ): File {
+        check(BuildConfig.DIAGNOSTICS_ENABLED) { "Diagnostics are disabled." }
+        eventLogger.flush()
         val outputDir = File(context.cacheDir, DIRECTORY_NAME).apply { mkdirs() }
         val outputFile = File(outputDir, "shelfdrive-diagnostics-${System.currentTimeMillis()}.zip")
 
@@ -56,6 +58,9 @@ class DiagnosticsPackageBuilder(
             put("deviceBrand", Build.BRAND)
             put("deviceModel", Build.MODEL)
             put("deviceProduct", Build.PRODUCT)
+            put("buildFingerprint", Build.FINGERPRINT)
+            put("buildIncremental", Build.VERSION.INCREMENTAL)
+            put("securityPatch", Build.VERSION.SECURITY_PATCH)
         }.toString(2)
     }
 
@@ -245,7 +250,11 @@ class DiagnosticsPackageBuilder(
         private const val ROOT_MEDIA_ID = "root"
         private val DIAGNOSTIC_PACKAGES = listOf(
             "com.android.car.media",
+            "com.android.car",
             "com.google.android.apps.automotive.templates.host",
+            "com.spotify.music",
+            "com.volvocars.launcher",
+            "com.volvocars.mediaplaybackcontrolservice",
         )
     }
 }

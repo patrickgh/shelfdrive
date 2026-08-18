@@ -25,6 +25,7 @@ class AudiobookshelfPlaybackRepository(
             )
             ResolvedAudiobookPlaybackSession(
                 playback = resolved.playback,
+                baseUrl = context.baseUrl,
                 accessToken = context.accessToken,
                 sessionId = resolved.sessionId,
             )
@@ -54,7 +55,7 @@ class AudiobookshelfPlaybackRepository(
                     id = track.id.ifBlank { "track-$index" },
                     title = track.title?.takeIf { it.isNotBlank() }
                         ?: inferTrackTitle(catalogBook, index, playbackSession.audioTracks.size),
-                    contentUrl = playbackSessionTrackUrl(baseUrl, sessionId, track.index),
+                    contentUrl = playbackTrackUri(bookId, track.index),
                     mimeType = track.mimeType,
                     durationMs = track.durationMs,
                     startOffsetMs = track.startOffsetMs,
@@ -109,14 +110,6 @@ class AudiobookshelfPlaybackRepository(
             sumOf { it.durationMs ?: 0L }
         }
     }
-}
-
-internal fun playbackSessionTrackUrl(
-    baseUrl: String,
-    sessionId: String,
-    trackIndex: Int,
-): String {
-    return "${baseUrl.trimEnd('/')}/public/session/$sessionId/track/$trackIndex"
 }
 
 private data class ResolvedPlaybackSession(

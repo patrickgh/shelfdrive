@@ -1,6 +1,6 @@
 # Privacy Policy for ShelfDrive
 
-Effective date: 2026-05-08
+Effective date: 2026-08-11
 
 ShelfDrive is an Android Automotive OS media app for connecting a vehicle media
 host to a user-configured Audiobookshelf server.
@@ -15,11 +15,10 @@ ShelfDrive does not include advertising, analytics SDKs, tracking SDKs, or a
 developer-operated content service.
 
 ShelfDrive connects to the Audiobookshelf server URL that you enter in the app
-settings. If you explicitly send diagnostics, ShelfDrive uploads a diagnostic
-package to the diagnostics upload URL shown in Settings.
+settings.
 
-ShelfDrive stores account, catalog, artwork, playback, cache, diagnostics, and
-settings data locally on your Android Automotive OS device so the app can sign
+ShelfDrive stores account, catalog, artwork, playback, cache, and settings data
+locally on your Android Automotive OS device so the app can sign
 in to your server, show your audiobook library, play audio, and synchronize
 listening progress.
 
@@ -35,9 +34,6 @@ ShelfDrive may store the following data locally on your device:
 - Playback state, queue state, current media metadata, and listening progress.
 - Cache data for catalog, artwork, and audio playback.
 - App settings, including playback preferences.
-- Diagnostics state, such as service startup status, restore status, upload
-  status, and error messages.
-- Diagnostics upload URL.
 
 Credentials are stored using Android encrypted storage. Android backup is
 disabled for ShelfDrive app data.
@@ -68,26 +64,6 @@ operator may receive and process your login attempts, media requests, playback
 requests, artwork requests, IP address, user agent, timestamps, and listening
 progress according to that server operator's own policies and configuration.
 
-## Diagnostics Upload
-
-ShelfDrive can optionally create and upload a diagnostics package if you
-explicitly start the upload. The app includes a default diagnostics upload URL
-that can be changed in Settings.
-
-The diagnostics package may include:
-
-- App logs and diagnostic events.
-- App version and build information.
-- Device and runtime details.
-- Authentication, connection, sync, cache, restore, and upload status.
-- Error messages.
-
-The diagnostics package does not intentionally include your saved password.
-
-If you use diagnostics upload, the package is sent to the diagnostics upload URL
-shown in Settings. The recipient of that URL controls what happens to the
-uploaded file after it is received.
-
 ## Data Shared with Third Parties
 
 ShelfDrive does not sell user data.
@@ -100,8 +76,6 @@ Data may be transmitted to:
 
 - The Audiobookshelf server URL configured by you, as required for app
   functionality.
-- The diagnostics upload URL shown in Settings, only if you explicitly send a
-  diagnostics package.
 
 If this privacy policy is hosted on GitHub or GitHub Pages, GitHub may process
 standard web access data when you open this page. That processing is governed by
@@ -125,9 +99,6 @@ ShelfDrive cannot delete server logs, server-side media metadata, server-side
 accounts, or server-side listening history except through the normal
 Audiobookshelf API operations used by the app.
 
-Data uploaded through diagnostics upload must be deleted by whoever controls the
-configured upload endpoint.
-
 ## Children
 
 ShelfDrive is not designed for children and does not provide child-directed
@@ -141,8 +112,7 @@ Network transport security depends on the server URL configured by the user.
 HTTPS is recommended for any non-local or public network connection.
 
 No method of storage or transmission is perfect. ShelfDrive cannot guarantee
-that a user-configured server, network, vehicle system, or diagnostics upload
-endpoint is secure.
+that a user-configured server, network, or vehicle system is secure.
 
 ## Changes to This Policy
 
