@@ -6,8 +6,8 @@ val keystoreProperties = Properties().apply {
         keystorePropertiesFile.inputStream().use(::load)
     }
 }
-val productionVersionCode = 34
-val productionVersionName = "1.0.0-rc2"
+val productionVersionCode = 37
+val productionVersionName = "1.0.0"
 val diagnosticsUploadUrl = keystoreProperties.getProperty("diagnosticsUploadUrl").orEmpty()
 val diagnosticsUploadPassword = keystoreProperties.getProperty("diagnosticsUploadPassword").orEmpty()
 
