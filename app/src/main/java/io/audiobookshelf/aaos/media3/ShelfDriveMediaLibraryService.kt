@@ -19,12 +19,21 @@ import androidx.annotation.RequiresApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.DeviceInfo
+import androidx.media3.common.FlagSet
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -106,6 +115,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.io.InterruptedIOException
+import java.util.IdentityHashMap
 import java.util.UUID
 
 @OptIn(UnstableApi::class)
@@ -2072,16 +2082,171 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private inner class AudiobookProgressPlayer(delegate: Player) : ForwardingPlayer(delegate) {
+        private val listeners = IdentityHashMap<Player.Listener, Player.Listener>()
+
         override fun getAvailableCommands(): Player.Commands {
-            return super.getAvailableCommands()
+            return audiobookCommands(super.getAvailableCommands())
+        }
+
+        override fun isCommandAvailable(command: Int): Boolean {
+            return availableCommands.contains(command)
+        }
+
+        private fun audiobookCommands(commands: Player.Commands): Player.Commands {
+            return commands
                 .buildUpon()
                 .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                 .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                 .remove(Player.COMMAND_SEEK_TO_NEXT)
                 .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+                // Hardware next/previous controls use the same time jumps as the screen buttons.
+                .addIf(Player.COMMAND_SEEK_TO_NEXT, commands.contains(Player.COMMAND_SEEK_FORWARD))
+                .addIf(Player.COMMAND_SEEK_TO_PREVIOUS, commands.contains(Player.COMMAND_SEEK_BACK))
                 .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
                 .remove(Player.COMMAND_SET_SPEED_AND_PITCH)
                 .build()
+        }
+
+        override fun addListener(listener: Player.Listener) {
+            synchronized(listeners) {
+                val forwardingListener = listeners.getOrPut(listener) {
+                    // Java default listener methods need explicit forwarding in Kotlin.
+                    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
+                    object : Player.Listener {
+                        private var lastCommands = availableCommands
+                        private var commandsChanged = false
+
+                        override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
+                            val commands = audiobookCommands(availableCommands)
+                            if (commands != lastCommands) {
+                                lastCommands = commands
+                                commandsChanged = true
+                                listener.onAvailableCommandsChanged(commands)
+                            }
+                        }
+
+                        override fun onEvents(player: Player, events: Player.Events) {
+                            val filteredEvents = if (
+                                events.contains(Player.EVENT_AVAILABLE_COMMANDS_CHANGED) && !commandsChanged
+                            ) {
+                                Player.Events(
+                                    FlagSet.Builder().apply {
+                                        for (index in 0 until events.size()) {
+                                            val event = events[index]
+                                            if (event != Player.EVENT_AVAILABLE_COMMANDS_CHANGED) {
+                                                add(event)
+                                            }
+                                        }
+                                    }.build(),
+                                )
+                            } else {
+                                events
+                            }
+                            commandsChanged = false
+                            if (filteredEvents.size() > 0) {
+                                listener.onEvents(player, filteredEvents)
+                            }
+                        }
+
+                        override fun onTimelineChanged(timeline: Timeline, reason: Int) =
+                            listener.onTimelineChanged(timeline, reason)
+
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) =
+                            listener.onMediaItemTransition(mediaItem, reason)
+
+                        override fun onTracksChanged(tracks: Tracks) = listener.onTracksChanged(tracks)
+
+                        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) =
+                            listener.onMediaMetadataChanged(mediaMetadata)
+
+                        override fun onPlaylistMetadataChanged(mediaMetadata: MediaMetadata) =
+                            listener.onPlaylistMetadataChanged(mediaMetadata)
+
+                        override fun onIsLoadingChanged(isLoading: Boolean) = listener.onIsLoadingChanged(isLoading)
+
+                        override fun onLoadingChanged(isLoading: Boolean) = listener.onLoadingChanged(isLoading)
+
+                        override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) =
+                            listener.onTrackSelectionParametersChanged(parameters)
+
+                        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) =
+                            listener.onPlayerStateChanged(playWhenReady, playbackState)
+
+                        override fun onPlaybackStateChanged(playbackState: Int) =
+                            listener.onPlaybackStateChanged(playbackState)
+
+                        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
+                            listener.onPlayWhenReadyChanged(playWhenReady, reason)
+
+                        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) =
+                            listener.onPlaybackSuppressionReasonChanged(playbackSuppressionReason)
+
+                        override fun onIsPlayingChanged(isPlaying: Boolean) = listener.onIsPlayingChanged(isPlaying)
+
+                        override fun onRepeatModeChanged(repeatMode: Int) = listener.onRepeatModeChanged(repeatMode)
+
+                        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) =
+                            listener.onShuffleModeEnabledChanged(shuffleModeEnabled)
+
+                        override fun onPlayerError(error: PlaybackException) = listener.onPlayerError(error)
+
+                        override fun onPlayerErrorChanged(error: PlaybackException?) = listener.onPlayerErrorChanged(error)
+
+                        override fun onPositionDiscontinuity(reason: Int) = listener.onPositionDiscontinuity(reason)
+
+                        override fun onPositionDiscontinuity(
+                            oldPosition: Player.PositionInfo,
+                            newPosition: Player.PositionInfo,
+                            reason: Int,
+                        ) = listener.onPositionDiscontinuity(oldPosition, newPosition, reason)
+
+                        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) =
+                            listener.onPlaybackParametersChanged(playbackParameters)
+
+                        override fun onSeekBackIncrementChanged(seekBackIncrementMs: Long) =
+                            listener.onSeekBackIncrementChanged(seekBackIncrementMs)
+
+                        override fun onSeekForwardIncrementChanged(seekForwardIncrementMs: Long) =
+                            listener.onSeekForwardIncrementChanged(seekForwardIncrementMs)
+
+                        override fun onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs: Long) =
+                            listener.onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs)
+
+                        override fun onVideoSizeChanged(videoSize: VideoSize) = listener.onVideoSizeChanged(videoSize)
+
+                        override fun onSurfaceSizeChanged(width: Int, height: Int) = listener.onSurfaceSizeChanged(width, height)
+
+                        override fun onRenderedFirstFrame() = listener.onRenderedFirstFrame()
+
+                        override fun onAudioSessionIdChanged(audioSessionId: Int) = listener.onAudioSessionIdChanged(audioSessionId)
+
+                        override fun onAudioAttributesChanged(audioAttributes: AudioAttributes) =
+                            listener.onAudioAttributesChanged(audioAttributes)
+
+                        override fun onVolumeChanged(volume: Float) = listener.onVolumeChanged(volume)
+
+                        override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) =
+                            listener.onSkipSilenceEnabledChanged(skipSilenceEnabled)
+
+                        override fun onCues(cues: List<Cue>) = listener.onCues(cues)
+
+                        override fun onCues(cueGroup: CueGroup) = listener.onCues(cueGroup)
+
+                        override fun onMetadata(metadata: Metadata) = listener.onMetadata(metadata)
+
+                        override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) = listener.onDeviceInfoChanged(deviceInfo)
+
+                        override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) = listener.onDeviceVolumeChanged(volume, muted)
+                    }
+                }
+                super.addListener(forwardingListener)
+            }
+        }
+
+        override fun removeListener(listener: Player.Listener) {
+            synchronized(listeners) {
+                super.removeListener(listeners.remove(listener) ?: listener)
+            }
         }
 
         override fun getDuration(): Long {
@@ -2140,6 +2305,14 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
         override fun seekForward() {
             seekBy(PlaybackPreferences.skipIncrementMs(this@ShelfDriveMediaLibraryService))
+        }
+
+        override fun seekToPrevious() {
+            seekBack()
+        }
+
+        override fun seekToNext() {
+            seekForward()
         }
 
         override fun play() {

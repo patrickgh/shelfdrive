@@ -191,7 +191,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun configurePlaybackPreferences() {
         findPreference<ListPreference>(KEY_SKIP_INCREMENT)?.summaryProvider =
-            ListPreference.SimpleSummaryProvider.getInstance()
+            Preference.SummaryProvider<ListPreference> { preference ->
+                "${preference.entry}\n${getString(R.string.settings_skip_increment_summary)}"
+            }
     }
 
     private fun configureActions() {

@@ -65,7 +65,7 @@ custom driver-facing playback UI where the platform already provides one.
 - Search the local synced audiobook catalog from the AAOS media host.
 - Play MP3 and M4B audiobooks through ExoPlayer.
 - Use native AAOS now-playing, skip, seek, speed, and media controls.
-- Configure the skip interval to 5, 10, 15, 30, or 60 seconds.
+- Configure the skip interval to 5, 10, 15, 30, or 60 seconds for both the screen controls and steering wheel next/previous buttons.
 - Cycle playback speed from the now-playing controls through AAOS-supported values.
 - Reconcile playback progress with Audiobookshelf asynchronously while playback is active.
 - Keep Audiobookshelf as the source of truth for listening progress.

@@ -25,7 +25,7 @@
     <string name="settings_resync_title">Neu synchronisieren</string>
     <string name="settings_clear_cache_title">Cache leeren</string>
     <string name="settings_skip_increment_title">Sprungweite</string>
-    <string name="settings_skip_increment_summary">Zeitspanne, um die die Zurück- und Vorwärts-Tasten springen.</string>
+    <string name="settings_skip_increment_summary">Zeitspanne, um die die Zurück- und Vorwärts-Tasten auf dem Bildschirm und am Lenkrad springen.</string>
     <string name="settings_skip_increment_5">5 Sekunden</string>
     <string name="settings_skip_increment_10">10 Sekunden</string>
     <string name="settings_skip_increment_15">15 Sekunden</string>

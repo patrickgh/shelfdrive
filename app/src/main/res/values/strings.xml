@@ -27,7 +27,7 @@
     <string name="settings_resync_title">Sync now</string>
     <string name="settings_clear_cache_title">Clear cache</string>
     <string name="settings_skip_increment_title">Skip interval</string>
-    <string name="settings_skip_increment_summary">Amount moved by the back and forward buttons.</string>
+    <string name="settings_skip_increment_summary">Amount moved by the back and forward buttons on the screen and steering wheel.</string>
     <string name="settings_skip_increment_5">5 seconds</string>
     <string name="settings_skip_increment_10">10 seconds</string>
     <string name="settings_skip_increment_15">15 seconds</string>
