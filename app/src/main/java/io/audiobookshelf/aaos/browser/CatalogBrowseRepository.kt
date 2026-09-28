@@ -3,6 +3,9 @@ package io.audiobookshelf.aaos.browser
 import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
+import io.audiobookshelf.aaos.catalog.persistence.SeriesBook
+import io.audiobookshelf.aaos.catalog.persistence.SeriesWithBookCount
+import io.audiobookshelf.aaos.catalog.persistence.SyncStateEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.Normalizer
@@ -11,6 +14,26 @@ import java.util.Locale
 class CatalogBrowseRepository(
     private val database: CatalogDatabase,
 ) {
+
+    suspend fun getSyncState(): SyncStateEntity? = withContext(Dispatchers.IO) {
+        database.syncStateDao().get()
+    }
+
+    suspend fun getSeriesRoot(): BrowseCollection<SeriesWithBookCount> = withContext(Dispatchers.IO) {
+        toCollection(database.seriesDao().getAllSorted()) { it.series.name }
+    }
+
+    suspend fun getSeriesForBucket(bucket: String): List<SeriesWithBookCount> = withContext(Dispatchers.IO) {
+        database.seriesDao().getAllSorted().filterToBucket(bucket) { it.series.name }
+    }
+
+    suspend fun getSeries(seriesId: String): SeriesWithBookCount? = withContext(Dispatchers.IO) {
+        database.seriesDao().getById(seriesId)
+    }
+
+    suspend fun getBooksForSeries(seriesId: String): List<SeriesBook> = withContext(Dispatchers.IO) {
+        database.seriesDao().getPlayableBooks(seriesId).sortedWith(SERIES_BOOK_ORDER)
+    }
 
     suspend fun getBooksRoot(): BrowseCollection<BookEntity> = withContext(Dispatchers.IO) {
         val books = database.bookDao().getAllPlayableSorted()

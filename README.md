@@ -60,7 +60,8 @@ custom driver-facing playback UI where the platform already provides one.
 ## Features
 
 - Browse Audiobookshelf book libraries as one combined catalog.
-- Open sections for recently listened books, all audiobooks, and authors.
+- Open sections for recently listened books, all audiobooks, authors, and series.
+- Browse series alphabetically and open their audiobooks in volume order, including books belonging to multiple series.
 - Display server-provided audiobook covers and author images.
 - Search the local synced audiobook catalog from the AAOS media host.
 - Play MP3 and M4B audiobooks through ExoPlayer.

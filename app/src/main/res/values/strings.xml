@@ -105,5 +105,12 @@
     <string name="media_root_recent">Recently listened</string>
     <string name="media_root_books">Audiobooks</string>
     <string name="media_root_authors">Authors</string>
+    <string name="media_root_series">Series</string>
+    <string name="media_series_sequence">Book %1$s</string>
+    <string name="media_series_empty">No series in your libraries</string>
+    <string name="media_series_no_playable_books">No playable audiobooks in this series</string>
+    <string name="media_series_loading">Series are being synchronized</string>
+    <string name="media_series_sync_required">Series have not been loaded yet. Synchronize the catalog in Settings.</string>
+    <string name="media_series_sync_failed">Series could not be loaded. Synchronize the catalog in Settings.</string>
     <string name="media_auth_required_title">Login required</string>
 </resources>

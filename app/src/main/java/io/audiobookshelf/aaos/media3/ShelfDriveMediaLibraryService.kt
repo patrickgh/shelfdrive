@@ -168,6 +168,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var lastTrackTransitionAtMs: Long? = null
     private var wasPlayWhenReady: Boolean = false
     private var lastSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
+    private val subscribedSeriesParents = mutableSetOf<String>()
     private val progressUpdateMutex = Mutex()
 
     override fun onCreate() {
@@ -791,6 +792,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             parentId: String,
             params: LibraryParams?,
         ): ListenableFuture<LibraryResult<Void>> {
+            when (BrowseNodeId.parse(parentId)) {
+                is BrowseNodeId.SeriesBucket, is BrowseNodeId.SeriesDetail -> subscribedSeriesParents.add(parentId)
+                else -> Unit
+            }
             val startedAt = SystemClock.elapsedRealtime()
             diagnosticEventLogger?.record(
                 "browse_subscribe_requested",
@@ -1168,6 +1173,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 BrowseNodeId.Recent,
                 BrowseNodeId.Books,
                 BrowseNodeId.Authors,
+                BrowseNodeId.Series,
                 -> false
 
                 else -> true
@@ -2443,6 +2449,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     BrowseNodeId.Recent.serialize(),
                     BrowseNodeId.Books.serialize(),
                     BrowseNodeId.Authors.serialize(),
+                    BrowseNodeId.Series.serialize(),
                 ).joinToString(","),
                 "syncStatus" to lastSyncSnapshot.status.name,
             ),
@@ -2450,6 +2457,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Recent.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Books.serialize(), Int.MAX_VALUE, null)
         mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Authors.serialize(), Int.MAX_VALUE, null)
+        mediaLibrarySession.notifyChildrenChanged(BrowseNodeId.Series.serialize(), Int.MAX_VALUE, null)
+        subscribedSeriesParents.removeAll { mediaLibrarySession.getSubscribedControllers(it).isEmpty() }
+        subscribedSeriesParents.forEach { parentId ->
+            mediaLibrarySession.notifyChildrenChanged(parentId, Int.MAX_VALUE, null)
+        }
     }
 
     private fun notifyRecentChanged() {
@@ -2473,6 +2485,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         return when (node) {
             BrowseNodeId.Root,
             is BrowseNodeId.Book,
+            BrowseNodeId.Series,
+            is BrowseNodeId.SeriesBucket,
+            is BrowseNodeId.SeriesDetail,
             -> false
 
             BrowseNodeId.Authors,

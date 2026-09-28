@@ -102,5 +102,12 @@
     <string name="media_root_recent">Zuletzt gehört</string>
     <string name="media_root_books">Hörbücher</string>
     <string name="media_root_authors">Autoren</string>
+    <string name="media_root_series">Serien</string>
+    <string name="media_series_sequence">Band %1$s</string>
+    <string name="media_series_empty">Keine Serien in deinen Bibliotheken</string>
+    <string name="media_series_no_playable_books">Keine abspielbaren Hörbücher in dieser Serie</string>
+    <string name="media_series_loading">Serien werden synchronisiert</string>
+    <string name="media_series_sync_required">Serien sind noch nicht geladen. Bitte den Katalog in den Einstellungen synchronisieren.</string>
+    <string name="media_series_sync_failed">Serien konnten nicht geladen werden. Bitte den Katalog in den Einstellungen synchronisieren.</string>
     <string name="media_auth_required_title">Anmeldung erforderlich</string>
 </resources>

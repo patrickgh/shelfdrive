@@ -8,8 +8,10 @@ import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
 import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
 import io.audiobookshelf.aaos.catalog.persistence.BookAuthorCrossRef
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
+import io.audiobookshelf.aaos.catalog.persistence.BookSeriesCrossRef
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.LibraryEntity
+import io.audiobookshelf.aaos.catalog.persistence.SeriesEntity
 import io.audiobookshelf.aaos.catalog.persistence.SyncStateEntity
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +95,8 @@ class CatalogSyncRepository(
         val authorMap = linkedMapOf<String, AuthorEntity>()
         val books = mutableListOf<BookEntity>()
         val crossRefs = linkedSetOf<BookAuthorCrossRef>()
+        val seriesMap = linkedMapOf<String, SeriesEntity>()
+        val seriesCrossRefs = mutableListOf<BookSeriesCrossRef>()
 
         libraries.forEach { library ->
             val libraryAuthors = apiClient.getLibraryAuthors(baseUrl, accessToken, library.id)
@@ -113,6 +117,14 @@ class CatalogSyncRepository(
 
             val libraryBooks = apiClient.getLibraryItems(baseUrl, accessToken, library.id)
             libraryBooks.forEach { book ->
+                book.series.forEach { series ->
+                    val entity = SeriesEntity(id = series.id, name = series.name)
+                    val previousSeries = seriesMap.put(series.id, entity)
+                    if (previousSeries != null && previousSeries != entity) {
+                        throw IOException("Conflicting names for series ${series.id}.")
+                    }
+                    seriesCrossRefs += BookSeriesCrossRef(book.id, series.id, series.sequence)
+                }
                 books += BookEntity(
                     id = book.id,
                     libraryId = library.id,
@@ -152,11 +164,15 @@ class CatalogSyncRepository(
             database.libraryDao().upsertAll(libraryEntities)
             database.authorDao().upsertAll(authorMap.values.sortedBy { it.sortName })
             database.bookDao().upsertAll(books)
+            database.seriesDao().upsertAll(seriesMap.values.toList())
+            database.bookSeriesCrossRefDao().clearAll()
+            database.bookSeriesCrossRefDao().upsertAll(seriesCrossRefs)
             database.bookAuthorCrossRefDao().clearAll()
             database.bookAuthorCrossRefDao().upsertAll(crossRefs.toList())
 
             deleteMissing(database.bookDao().getAllIds(), books.mapTo(hashSetOf()) { it.id }, database.bookDao()::deleteByIds)
             deleteMissing(database.authorDao().getAllIds(), authorMap.keys, database.authorDao()::deleteByIds)
+            deleteMissing(database.seriesDao().getAllIds(), seriesMap.keys, database.seriesDao()::deleteByIds)
             deleteMissing(
                 database.libraryDao().getAllIds(),
                 libraryEntities.mapTo(hashSetOf()) { it.id },

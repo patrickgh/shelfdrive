@@ -130,30 +130,71 @@ class AudiobookshelfApiClient(
             retryProfile = RetryProfile.BACKGROUND_REFRESH,
         )
 
-        val root = JSONObject(response.body)
-        val results = root.optJSONArray("results") ?: return emptyList()
-        return buildList(results.length()) {
-            for (index in 0 until results.length()) {
-                val item = results.optJSONObject(index) ?: continue
-                val media = item.optJSONObject("media") ?: continue
-                val metadata = media.optJSONObject("metadata") ?: continue
-                add(
-                    BookSummary(
-                        id = item.optString("id"),
-                        libraryId = libraryId,
-                        title = metadata.optString("title").ifBlank { item.optString("title") },
-                        sortTitle = metadata.optString("titleIgnorePrefix")
-                            .ifBlank { metadata.optString("title") }
-                            .ifBlank { item.optString("title") },
-                        subtitle = metadata.optString("subtitle").takeIf { it.isNotBlank() },
-                        description = metadata.optString("description").takeIf { it.isNotBlank() },
-                        coverPath = media.optString("coverPath").takeIf { it.isNotBlank() },
-                        durationMs = media.optDouble("duration").takeIf { !it.isNaN() }?.let { (it * 1000).toLong() },
-                        authorDisplay = metadata.optString("authorName").takeIf { it.isNotBlank() },
-                        authors = parseAuthors(metadata),
-                        isPlayable = item.optBoolean("isMissing").not() && item.optBoolean("isInvalid").not(),
+        val results = JSONObject(response.body).optJSONArray("results")
+            ?: throw IOException("Library $libraryId response is missing results.")
+        val itemIds = List(results.length()) { index ->
+            (results.optJSONObject(index)?.opt("id") as? String)?.takeIf { it.isNotBlank() }
+                ?: throw IOException("Library $libraryId has an item without an ID at index $index.")
+        }
+
+        return buildList(itemIds.size) {
+            // The library list is minified even without minified=1. Batch/get supplies full series metadata.
+            // Bound expanded responses because they also contain audio files, tracks, and chapters.
+            for (batch in itemIds.chunked(LIBRARY_ITEM_BATCH_SIZE)) {
+                val expandedResponse = httpClient.execute(
+                    baseUrl = baseUrl,
+                    request = HttpRequest(
+                        path = "/api/items/batch/get",
+                        method = "POST",
+                        headers = mapOf(
+                            "Authorization" to "Bearer $accessToken",
+                            "Content-Type" to "application/json",
+                        ),
+                        body = JSONObject().put("libraryItemIds", JSONArray(batch)).toString(),
+                        retryProfile = RetryProfile.BACKGROUND_REFRESH,
                     ),
                 )
+                if (expandedResponse.statusCode !in 200..299) {
+                    throw ApiException(expandedResponse.statusCode, extractErrorMessage(expandedResponse.body))
+                }
+                val expandedItems = JSONObject(expandedResponse.body).optJSONArray("libraryItems")
+                    ?: throw IOException("Batch response for library $libraryId is missing libraryItems.")
+                val itemsById = linkedMapOf<String, JSONObject>()
+                for (index in 0 until expandedItems.length()) {
+                    val item = expandedItems.optJSONObject(index)
+                        ?: throw IOException("Invalid batch item at index $index.")
+                    val id = (item.opt("id") as? String)?.takeIf { it in batch }
+                        ?: throw IOException("Batch response contains an unexpected item ID.")
+                    if (itemsById.put(id, item) != null) {
+                        throw IOException("Batch response contains duplicate item $id.")
+                    }
+                }
+                for (itemId in batch) {
+                    val item = itemsById[itemId]
+                        ?: throw IOException("Batch response is missing library item $itemId.")
+                    val media = item.optJSONObject("media")
+                        ?: throw IOException("Library item $itemId is missing media.")
+                    val metadata = media.optJSONObject("metadata")
+                        ?: throw IOException("Library item $itemId is missing metadata.")
+                    add(
+                        BookSummary(
+                            id = item.optString("id"),
+                            libraryId = libraryId,
+                            title = metadata.optString("title").ifBlank { item.optString("title") },
+                            sortTitle = metadata.optString("titleIgnorePrefix")
+                                .ifBlank { metadata.optString("title") }
+                                .ifBlank { item.optString("title") },
+                            subtitle = metadata.optString("subtitle").takeIf { it.isNotBlank() },
+                            description = metadata.optString("description").takeIf { it.isNotBlank() },
+                            coverPath = media.optString("coverPath").takeIf { it.isNotBlank() },
+                            durationMs = media.optDouble("duration").takeIf { !it.isNaN() }?.let { (it * 1000).toLong() },
+                            authorDisplay = metadata.optString("authorName").takeIf { it.isNotBlank() },
+                            authors = parseAuthors(metadata),
+                            series = parseBookSeries(metadata),
+                            isPlayable = item.optBoolean("isMissing").not() && item.optBoolean("isInvalid").not(),
+                        ),
+                    )
+                }
             }
         }
     }
@@ -551,6 +592,7 @@ class AudiobookshelfApiClient(
 
     companion object {
         private const val MAX_ERROR_MESSAGE_LENGTH = 240
+        private const val LIBRARY_ITEM_BATCH_SIZE = 100
     }
 }
 
@@ -604,8 +646,37 @@ data class BookSummary(
     val durationMs: Long?,
     val authorDisplay: String?,
     val authors: List<AuthorSummary>,
+    val series: List<BookSeriesSummary>,
     val isPlayable: Boolean,
 )
+
+data class BookSeriesSummary(
+    val id: String,
+    val name: String,
+    val sequence: String?,
+)
+
+internal fun parseBookSeries(metadata: JSONObject): List<BookSeriesSummary> {
+    val series = metadata.optJSONArray("series")
+        ?: throw IOException("Book metadata is missing the series array.")
+    val ids = hashSetOf<String>()
+    return List(series.length()) { index ->
+        val entry = series.optJSONObject(index)
+            ?: throw IOException("Invalid series entry at index $index.")
+        val id = (entry.opt("id") as? String)?.takeIf { it.isNotBlank() }
+            ?: throw IOException("Series entry at index $index has no ID.")
+        val name = (entry.opt("name") as? String)?.takeIf { it.isNotBlank() }
+            ?: throw IOException("Series $id has no name.")
+        if (!ids.add(id)) throw IOException("Duplicate series $id in book metadata.")
+        val rawSequence = entry.opt("sequence")
+        val sequence = when (rawSequence) {
+            null, JSONObject.NULL -> null
+            is String -> rawSequence.takeIf { it.isNotBlank() }
+            else -> throw IOException("Series $id has an invalid sequence.")
+        }
+        BookSeriesSummary(id, name, sequence)
+    }
+}
 
 data class AuthorSummary(
     val id: String,

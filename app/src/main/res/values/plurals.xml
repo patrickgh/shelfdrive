@@ -13,4 +13,12 @@
         <item quantity="one">%d audiobook</item>
         <item quantity="other">%d audiobooks</item>
     </plurals>
+    <plurals name="media_series_group_summary">
+        <item quantity="one">%d series</item>
+        <item quantity="other">%d series</item>
+    </plurals>
+    <plurals name="media_series_book_count">
+        <item quantity="one">%d playable audiobook</item>
+        <item quantity="other">%d playable audiobooks</item>
+    </plurals>
 </resources>

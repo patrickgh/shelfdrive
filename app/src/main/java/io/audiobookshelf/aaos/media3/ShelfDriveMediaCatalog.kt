@@ -16,6 +16,9 @@ import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository.BrowseCollection
 import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
+import io.audiobookshelf.aaos.catalog.persistence.SeriesBook
+import io.audiobookshelf.aaos.catalog.persistence.SeriesWithBookCount
+import io.audiobookshelf.aaos.sync.SyncStatus
 
 @OptIn(UnstableApi::class)
 internal class ShelfDriveMediaCatalog(
@@ -36,8 +39,19 @@ internal class ShelfDriveMediaCatalog(
 
     suspend fun loadChildren(parentId: String): List<MediaItem> {
         val node = BrowseNodeId.parse(parentId) ?: return emptyList()
+        if (node == BrowseNodeId.Series || node is BrowseNodeId.SeriesBucket || node is BrowseNodeId.SeriesDetail) {
+            val syncState = browseRepository.getSyncState()
+            if (syncState?.lastSyncedAt == null) {
+                val message = when (syncState?.status) {
+                    SyncStatus.FAILED.name -> R.string.media_series_sync_failed
+                    SyncStatus.RUNNING.name -> R.string.media_series_loading
+                    else -> R.string.media_series_sync_required
+                }
+                return listOf(buildSeriesStatusItem(parentId, message))
+            }
+        }
         return when (node) {
-            BrowseNodeId.Root -> listOf(buildRecentRootItem(), buildBooksRootItem(), buildAuthorsRootItem())
+            BrowseNodeId.Root -> listOf(buildRecentRootItem(), buildBooksRootItem(), buildAuthorsRootItem(), buildSeriesRootItem())
             BrowseNodeId.Recent -> loadRecentItems()
             BrowseNodeId.Books -> loadBooksItems()
             is BrowseNodeId.BooksBucket -> browseRepository.getBooksForBucket(node.bucket).map(::buildPlayableBookItem)
@@ -48,6 +62,11 @@ internal class ShelfDriveMediaCatalog(
                 .getBooksForAuthorBucket(node.authorId, node.bucket)
                 .map(::buildPlayableBookItem)
             is BrowseNodeId.Book -> emptyList()
+            BrowseNodeId.Series -> loadSeriesItems()
+            is BrowseNodeId.SeriesBucket -> browseRepository.getSeriesForBucket(node.bucket).map(::buildSeriesItem)
+            is BrowseNodeId.SeriesDetail -> browseRepository.getBooksForSeries(node.seriesId)
+                .map(::buildSeriesBookItem)
+                .ifEmpty { listOf(buildSeriesStatusItem(parentId, R.string.media_series_no_playable_books)) }
         }
     }
 
@@ -63,6 +82,9 @@ internal class ShelfDriveMediaCatalog(
             is BrowseNodeId.Book -> browseRepository.getPlayableBook(node.bookId)?.let(::buildPlayableBookItem)
             is BrowseNodeId.Author -> browseRepository.getAuthor(node.authorId)?.let(::buildAuthorItem)
             is BrowseNodeId.AuthorBooksBucket -> buildAuthorBooksBucketItem(node.authorId, node.bucket)
+            BrowseNodeId.Series -> buildSeriesRootItem()
+            is BrowseNodeId.SeriesBucket -> buildSeriesBucketItem(node.bucket)
+            is BrowseNodeId.SeriesDetail -> browseRepository.getSeries(node.seriesId)?.let(::buildSeriesItem)
         }
     }
 
@@ -113,6 +135,59 @@ internal class ShelfDriveMediaCatalog(
     private suspend fun loadRecentItems(): List<MediaItem> {
         return browseRepository.getRecentBooks().map(::buildPlayableBookItem)
     }
+
+    private suspend fun loadSeriesItems(): List<MediaItem> {
+        return when (val series = browseRepository.getSeriesRoot()) {
+            BrowseCollection.Empty -> listOf(buildSeriesStatusItem(BrowseNodeId.Series.serialize(), R.string.media_series_empty))
+            is BrowseCollection.Direct -> series.items.map(::buildSeriesItem)
+            is BrowseCollection.Grouped -> series.groups.map { buildSeriesBucketItem(it.key, it.count) }
+        }
+    }
+
+    private fun buildSeriesRootItem(): MediaItem = buildBrowsableItem(
+        mediaId = BrowseNodeId.Series.serialize(),
+        title = context.getString(R.string.media_root_series),
+        iconUri = drawableUri(R.drawable.ic_menu_series),
+        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+    )
+
+    private fun buildSeriesBucketItem(bucket: String, count: Int? = null): MediaItem = buildBrowsableItem(
+        mediaId = BrowseNodeId.SeriesBucket(bucket).serialize(),
+        title = bucket,
+        subtitle = count?.let { context.resources.getQuantityString(R.plurals.media_series_group_summary, it, it) },
+        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+    )
+
+    private fun buildSeriesItem(series: SeriesWithBookCount): MediaItem = buildBrowsableItem(
+        mediaId = BrowseNodeId.SeriesDetail(series.series.id).serialize(),
+        title = series.series.name,
+        subtitle = context.resources.getQuantityString(R.plurals.media_series_book_count, series.numBooks, series.numBooks),
+        iconUri = drawableUri(R.drawable.ic_menu_series),
+        extras = childStyleExtras(playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+    )
+
+    private fun buildSeriesBookItem(seriesBook: SeriesBook): MediaItem {
+        val item = buildPlayableBookItem(seriesBook.book)
+        val sequence = seriesBook.sequence ?: return item
+        val subtitle = listOfNotNull(
+            context.getString(R.string.media_series_sequence, sequence),
+            item.mediaMetadata.artist,
+        ).joinToString(" · ")
+        return item.buildUpon()
+            .setMediaMetadata(item.mediaMetadata.buildUpon().setArtist(subtitle).build())
+            .build()
+    }
+
+    private fun buildSeriesStatusItem(parentId: String, messageResId: Int): MediaItem = MediaItem.Builder()
+        .setMediaId("series-state:$parentId")
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(context.getString(messageResId))
+                .setIsBrowsable(false)
+                .setIsPlayable(false)
+                .build(),
+        )
+        .build()
 
     private suspend fun loadBooksItems(): List<MediaItem> {
         return when (val books = browseRepository.getBooksRoot()) {

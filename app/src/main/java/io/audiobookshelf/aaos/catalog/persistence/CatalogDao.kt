@@ -126,6 +126,61 @@ interface BookAuthorCrossRefDao {
 }
 
 @Dao
+interface SeriesDao {
+    @Upsert
+    suspend fun upsertAll(series: List<SeriesEntity>)
+
+    @Query("SELECT id FROM series")
+    suspend fun getAllIds(): List<String>
+
+    @Query("DELETE FROM series WHERE id IN (:seriesIds)")
+    suspend fun deleteByIds(seriesIds: List<String>)
+
+    @Query("DELETE FROM series")
+    suspend fun clearAll()
+
+    @Query(
+        """
+        SELECT s.*, COUNT(b.id) AS numBooks FROM series s
+        LEFT JOIN book_series_cross_refs bs ON bs.seriesId = s.id
+        LEFT JOIN books b ON b.id = bs.bookId AND b.isPlayable = 1
+        GROUP BY s.id
+        ORDER BY s.name COLLATE NOCASE ASC, s.id ASC
+        """,
+    )
+    suspend fun getAllSorted(): List<SeriesWithBookCount>
+
+    @Query(
+        """
+        SELECT s.*, COUNT(b.id) AS numBooks FROM series s
+        LEFT JOIN book_series_cross_refs bs ON bs.seriesId = s.id
+        LEFT JOIN books b ON b.id = bs.bookId AND b.isPlayable = 1
+        WHERE s.id = :seriesId
+        GROUP BY s.id
+        """,
+    )
+    suspend fun getById(seriesId: String): SeriesWithBookCount?
+
+    @Query(
+        """
+        SELECT b.*, bs.sequence FROM books b
+        INNER JOIN book_series_cross_refs bs ON bs.bookId = b.id
+        WHERE bs.seriesId = :seriesId AND b.isPlayable = 1
+        """,
+    )
+    suspend fun getPlayableBooks(seriesId: String): List<SeriesBook>
+}
+
+@Dao
+interface BookSeriesCrossRefDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(crossRefs: List<BookSeriesCrossRef>)
+
+    @Query("DELETE FROM book_series_cross_refs")
+    suspend fun clearAll()
+}
+
+@Dao
 interface MediaProgressDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(progressEntries: List<MediaProgressEntity>)

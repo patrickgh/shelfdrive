@@ -32,6 +32,7 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = productionVersionCode
         versionName = productionVersionName
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "DIAGNOSTICS_ENABLED", "false")
         buildConfigField("String", "DIAGNOSTICS_UPLOAD_URL", buildConfigString(""))
         buildConfigField("String", "DIAGNOSTICS_UPLOAD_PASSWORD", buildConfigString(""))
@@ -44,6 +45,8 @@ android {
     buildFeatures {
         buildConfig = true
     }
+
+    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 
     flavorDimensions += "diagnostics"
 
@@ -123,6 +126,9 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
 }
 
 ksp {

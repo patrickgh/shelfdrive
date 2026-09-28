@@ -39,15 +39,34 @@ sealed interface BrowseNodeId {
         override fun serialize(): String = "book:$bookId"
     }
 
+    data object Series : BrowseNodeId {
+        override fun serialize(): String = "series"
+    }
+
+    data class SeriesBucket(val bucket: String) : BrowseNodeId {
+        override fun serialize(): String = "series:bucket:$bucket"
+    }
+
+    data class SeriesDetail(val seriesId: String) : BrowseNodeId {
+        override fun serialize(): String = "series:$seriesId"
+    }
+
     companion object {
         fun parse(rawValue: String): BrowseNodeId? {
             if (rawValue == Root.serialize()) return Root
             if (rawValue == Recent.serialize()) return Recent
             if (rawValue == Books.serialize()) return Books
             if (rawValue == Authors.serialize()) return Authors
+            if (rawValue == Series.serialize()) return Series
 
             val parts = rawValue.split(":")
             return when {
+                parts.size == 3 && parts[0] == "series" && parts[1] == "bucket" && parts[2].isNotBlank() ->
+                    SeriesBucket(parts[2])
+
+                parts.size == 2 && parts[0] == "series" && parts[1].isNotBlank() ->
+                    SeriesDetail(parts[1])
+
                 parts.size == 3 && parts[0] == "books" && parts[1] == "bucket" ->
                     BooksBucket(parts[2])
 

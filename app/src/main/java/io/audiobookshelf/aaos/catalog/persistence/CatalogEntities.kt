@@ -1,5 +1,6 @@
 package io.audiobookshelf.aaos.catalog.persistence
 
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -66,6 +67,47 @@ data class AuthorEntity(
 data class BookAuthorCrossRef(
     val bookId: String,
     val authorId: String,
+)
+
+@Entity(tableName = "series", indices = [Index("name")])
+data class SeriesEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+)
+
+@Entity(
+    tableName = "book_series_cross_refs",
+    primaryKeys = ["bookId", "seriesId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = BookEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["bookId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+        ForeignKey(
+            entity = SeriesEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["seriesId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("seriesId")],
+)
+data class BookSeriesCrossRef(
+    val bookId: String,
+    val seriesId: String,
+    val sequence: String?,
+)
+
+data class SeriesWithBookCount(
+    @Embedded val series: SeriesEntity,
+    val numBooks: Int,
+)
+
+data class SeriesBook(
+    @Embedded val book: BookEntity,
+    val sequence: String?,
 )
 
 @Entity(

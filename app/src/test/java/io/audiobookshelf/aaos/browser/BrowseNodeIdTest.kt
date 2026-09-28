@@ -11,6 +11,9 @@ class BrowseNodeIdTest {
             BrowseNodeId.BooksBucket("A"),
             BrowseNodeId.AuthorsBucket("B"),
             BrowseNodeId.AuthorBooksBucket("author-id", "C"),
+            BrowseNodeId.Series,
+            BrowseNodeId.SeriesBucket("#"),
+            BrowseNodeId.SeriesDetail("series-id"),
         )
 
         nodes.forEach { node ->
@@ -28,5 +31,8 @@ class BrowseNodeIdTest {
         assertNull(BrowseNodeId.parse("recent:empty"))
         assertNull(BrowseNodeId.parse("books:sync_failed"))
         assertNull(BrowseNodeId.parse("search:empty:123"))
+        assertNull(BrowseNodeId.parse("series-state:series"))
+        assertNull(BrowseNodeId.parse("series:"))
+        assertNull(BrowseNodeId.parse("series:bucket:"))
     }
 }

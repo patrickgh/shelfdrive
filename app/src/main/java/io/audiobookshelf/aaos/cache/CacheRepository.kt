@@ -22,6 +22,8 @@ class CacheRepository(
         database.withTransaction {
             database.mediaProgressDao().clearAll()
             database.bookAuthorCrossRefDao().clearAll()
+            database.bookSeriesCrossRefDao().clearAll()
+            database.seriesDao().clearAll()
             database.bookDao().clearAll()
             database.authorDao().clearAll()
             database.libraryDao().clearAll()
