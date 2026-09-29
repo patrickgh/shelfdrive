@@ -679,11 +679,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             },
         )
         if (error.isUnauthorizedResponse()) {
-            recoverPlaybackAfterUnauthorized()
+            recoverPlaybackSession("unauthorized")
         } else if (error.isMissingPlaybackSessionResponse(activeTrack?.contentUrl)) {
             if (playbackSessionRecoveryAttempts < MAX_PLAYBACK_SESSION_RECOVERY_ATTEMPTS) {
                 playbackSessionRecoveryAttempts++
-                recoverPlaybackAfterMissingSession()
+                recoverPlaybackSession("session_not_found")
             } else {
                 diagnosticEventLogger?.record(
                     "playback_recovery_exhausted",
@@ -1371,19 +1371,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (searchQuery.isBlank()) {
             throw PlaybackResolutionException("Unbekannte Medien-ID '${requestedItem.mediaId}'.")
         }
-        val book = browseRepository.findBestPlayableBookForVoice(listOf(searchQuery))
+        val book = browseRepository.findBestPlayableBookForVoice(searchQuery)
             ?: throw PlaybackResolutionException(
                 "Kein Hoerbuch fuer '$searchQuery' gefunden.",
             )
         return playbackRepository.resolveBook(book.id)
-    }
-
-    private fun recoverPlaybackAfterUnauthorized() {
-        recoverPlaybackSession("unauthorized")
-    }
-
-    private fun recoverPlaybackAfterMissingSession() {
-        recoverPlaybackSession("session_not_found")
     }
 
     private fun recoverPlaybackSession(source: String) {
@@ -1917,7 +1909,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 snapshot.reason != PlaybackProgressReason.ENDED &&
                 snapshot.reason != PlaybackProgressReason.STOPPED
             ) {
-                recoverPlaybackAfterMissingSession()
+                recoverPlaybackSession("session_not_found")
             }
         }
         if (result.uploaded && activeBook?.bookId == snapshot.bookId) {
@@ -2009,15 +2001,6 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             ?: playback.queue.firstOrNull()
             ?: return player.currentPosition.coerceAtLeast(0L)
         return (queueTrack.startOffsetMs + player.currentPosition.coerceAtLeast(0L))
-            .coerceAtMost(playback.durationMs ?: Long.MAX_VALUE)
-    }
-
-    private fun logicalBufferedPositionMs(): Long {
-        val playback = activeBook ?: return player.bufferedPosition.coerceAtLeast(0L)
-        val queueTrack = playback.queue.getOrNull(currentGlobalTrackIndex())
-            ?: playback.queue.firstOrNull()
-            ?: return player.bufferedPosition.coerceAtLeast(0L)
-        return (queueTrack.startOffsetMs + player.bufferedPosition.coerceAtLeast(0L))
             .coerceAtMost(playback.durationMs ?: Long.MAX_VALUE)
     }
 

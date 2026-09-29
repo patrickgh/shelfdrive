@@ -43,22 +43,10 @@ class AuthRepository(
                     return@withContext refreshOrReauthenticate(stored, baseUrl, username)
                 }
                 Log.w(TAG, "Token validation failed with API error ${exception.statusCode}. Keeping cached session alive.", exception)
-                return@withContext AuthSnapshot(
-                    status = AuthStatus.AUTHENTICATED,
-                    baseUrl = baseUrl,
-                    username = username,
-                    statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                    hasStoredPassword = !stored.password.isNullOrBlank(),
-                )
+                return@withContext offlineSnapshot(stored, baseUrl, username)
             } catch (exception: IOException) {
                 Log.w(TAG, "Token validation failed due to IO error. Keeping cached session alive.", exception)
-                return@withContext AuthSnapshot(
-                    status = AuthStatus.AUTHENTICATED,
-                    baseUrl = baseUrl,
-                    username = username,
-                    statusMessage = UserVisibleStatus.SERVER_UNREACHABLE,
-                    hasStoredPassword = !stored.password.isNullOrBlank(),
-                )
+                return@withContext offlineSnapshot(stored, baseUrl, username)
             }
         }
 

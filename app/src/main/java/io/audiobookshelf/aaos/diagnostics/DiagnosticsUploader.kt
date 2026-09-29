@@ -5,11 +5,15 @@ import androidx.core.net.toUri
 import io.audiobookshelf.aaos.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okio.buffer
+import okio.sink
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.UUID
 
 class DiagnosticsUploader {
     suspend fun upload(uploadUrl: String, packageFile: File): DiagnosticsUploadResult = withContext(Dispatchers.IO) {
@@ -17,28 +21,21 @@ class DiagnosticsUploader {
             throw IOException("Diagnostics are disabled.")
         }
         val normalizedUrl = validateUploadUrl(uploadUrl)
-        val boundary = "ShelfDriveDiagnostics-${UUID.randomUUID()}"
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", packageFile.name, packageFile.asRequestBody("application/zip".toMediaType()))
+            .build()
         val connection = (URL(normalizedUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
             doInput = true
             doOutput = true
-            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            setRequestProperty("Content-Type", body.contentType().toString())
             setRequestProperty("Accept", "application/json,text/plain,*/*")
             setRequestProperty("Authorization", basicAuthorizationHeader())
         }
-
-        connection.outputStream.buffered().use { output ->
-            output.write("--$boundary\r\n".toByteArray())
-            output.write(
-                "Content-Disposition: form-data; name=\"file\"; filename=\"${packageFile.name}\"\r\n"
-                    .toByteArray(),
-            )
-            output.write("Content-Type: application/zip\r\n\r\n".toByteArray())
-            packageFile.inputStream().use { input -> input.copyTo(output) }
-            output.write("\r\n--$boundary--\r\n".toByteArray())
-        }
+        connection.outputStream.sink().buffer().use { body.writeTo(it) }
 
         val statusCode = connection.responseCode
         val responseText = readBody(connection).take(MAX_RESPONSE_LENGTH)

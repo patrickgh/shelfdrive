@@ -6,8 +6,8 @@ val keystoreProperties = Properties().apply {
         keystorePropertiesFile.inputStream().use(::load)
     }
 }
-val productionVersionCode = 37
-val productionVersionName = "1.0.0"
+val productionVersionCode = 38
+val productionVersionName = "1.1.0"
 val diagnosticsUploadUrl = keystoreProperties.getProperty("diagnosticsUploadUrl").orEmpty()
 val diagnosticsUploadPassword = keystoreProperties.getProperty("diagnosticsUploadPassword").orEmpty()
 
@@ -117,7 +117,6 @@ dependencies {
     implementation(libs.androidx.media3.database)
     implementation(libs.androidx.concurrent.futures)
     implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.preference.ktx)
     implementation(libs.androidx.security.crypto)
     implementation(libs.kotlinx.coroutines.android)

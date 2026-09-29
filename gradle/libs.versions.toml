@@ -34,7 +34,6 @@ androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplaye
 androidx-media3-session = { group = "androidx.media3", name = "media3-session", version.ref = "androidxMedia3" }
 androidx-media3-database = { group = "androidx.media3", name = "media3-database", version.ref = "androidxMedia3" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "androidxRoom" }
-androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "androidxRoom" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "androidxRoom" }
 androidx-preference-ktx = { group = "androidx.preference", name = "preference-ktx", version.ref = "androidxPreference" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "androidxSecurity" }

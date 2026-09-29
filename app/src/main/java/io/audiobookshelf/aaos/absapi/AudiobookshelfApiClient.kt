@@ -309,43 +309,14 @@ class AudiobookshelfApiClient(
         )
     }
 
-    suspend fun syncPlaybackSession(
+    suspend fun updatePlaybackSession(
         baseUrl: String,
         accessToken: String,
         sessionId: String,
         sessionUpdate: PlaybackSessionUpdateRequest,
+        close: Boolean,
     ) {
-        updatePlaybackSession(
-            baseUrl = baseUrl,
-            accessToken = accessToken,
-            sessionId = sessionId,
-            pathSuffix = "sync",
-            sessionUpdate = sessionUpdate,
-        )
-    }
-
-    suspend fun closePlaybackSession(
-        baseUrl: String,
-        accessToken: String,
-        sessionId: String,
-        sessionUpdate: PlaybackSessionUpdateRequest,
-    ) {
-        updatePlaybackSession(
-            baseUrl = baseUrl,
-            accessToken = accessToken,
-            sessionId = sessionId,
-            pathSuffix = "close",
-            sessionUpdate = sessionUpdate,
-        )
-    }
-
-    private suspend fun updatePlaybackSession(
-        baseUrl: String,
-        accessToken: String,
-        sessionId: String,
-        pathSuffix: String,
-        sessionUpdate: PlaybackSessionUpdateRequest,
-    ) {
+        val pathSuffix = if (close) "close" else "sync"
         val response = httpClient.execute(
             baseUrl = baseUrl,
             request = HttpRequest(

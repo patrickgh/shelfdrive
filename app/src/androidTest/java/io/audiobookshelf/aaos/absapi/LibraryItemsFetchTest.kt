@@ -21,6 +21,33 @@ import java.io.IOException
 @RunWith(AndroidJUnit4::class)
 class LibraryItemsFetchTest {
     @Test
+    fun updatesPlaybackSessionUsingSyncOrCloseWithTheSamePayload() = runBlocking {
+        for (close in listOf(false, true)) {
+            var called = false
+            val client = client { request ->
+                called = true
+                assertEquals("POST", request.method)
+                assertEquals("/api/session/session/${if (close) "close" else "sync"}", request.url.encodedPath)
+                assertEquals("Bearer test-token", request.header("Authorization"))
+                val buffer = Buffer()
+                requireNotNull(request.body).writeTo(buffer)
+                val payload = JSONObject(buffer.readUtf8())
+                assertEquals(12.345, payload.getDouble("currentTime"), 0.0)
+                assertEquals(100.0, payload.getDouble("duration"), 0.0)
+                assertEquals(5.432, payload.getDouble("timeListened"), 0.0)
+                assertEquals(123L, payload.getLong("lastUpdate"))
+                "{}"
+            }
+            client.updatePlaybackSession(
+                "https://abs.example", "test-token", "session",
+                PlaybackSessionUpdateRequest(12_345L, 100_000L, 5_432L, 123L),
+                close = close,
+            )
+            assertTrue(called)
+        }
+    }
+
+    @Test
     fun loadsSeriesFromExpandedBatchWhenLibraryListHasOnlySeriesName() = runBlocking {
         val requests = mutableListOf<String>()
         val client = client { request ->

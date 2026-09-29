@@ -80,41 +80,13 @@ class CatalogBrowseRepository(
                 .take(limit)
         }
 
-    suspend fun findBestPlayableBookForVoice(queries: List<String>): BookEntity? = withContext(Dispatchers.IO) {
-        val normalizedQueries = queries
-            .map(::normalizeSearchText)
-            .filter { it.isNotBlank() }
-            .distinct()
-
-        if (normalizedQueries.isEmpty()) {
+    suspend fun findBestPlayableBookForVoice(query: String): BookEntity? = withContext(Dispatchers.IO) {
+        if (normalizeSearchText(query).isBlank()) {
             return@withContext defaultVoiceBook()
         }
-
-        val books = database.bookDao().getAllPlayableSorted()
-        normalizedQueries.forEach { query ->
-            books.rankedMatches(
-                query = query,
-                sortKey = { it.sortTitle.ifBlank { it.title } },
-                rank = { book, searchQuery -> book.searchRank(searchQuery) },
-            ).firstOrNull()?.let { return@withContext it }
-        }
-
-        val authors = database.authorDao().getAllSorted()
-        normalizedQueries.forEach { query ->
-            val author = authors.rankedMatches(
-                query = query,
-                sortKey = { it.sortName.ifBlank { it.name } },
-                rank = { candidate, searchQuery -> candidate.searchRank(searchQuery) },
-            ).firstOrNull()
-
-            if (author != null) {
-                database.bookDao().getPlayableForAuthor(author.id).firstOrNull()?.let {
-                    return@withContext it
-                }
-            }
-        }
-
-        null
+        searchBooks(query, limit = 1).firstOrNull()?.let { return@withContext it }
+        val author = searchAuthors(query, limit = 1).firstOrNull() ?: return@withContext null
+        database.bookDao().getPlayableForAuthor(author.id).firstOrNull()
     }
 
     suspend fun getBooksForBucket(bucket: String): List<BookEntity> = withContext(Dispatchers.IO) {

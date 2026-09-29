@@ -18,16 +18,10 @@ class AudiobookshelfPlaybackRepository(
 ) {
     suspend fun resolveBook(bookId: String): ResolvedAudiobookPlaybackSession = withContext(Dispatchers.IO) {
         authenticatedRequestRunner.execute { context ->
-            val resolved = resolveBookOnce(
+            resolveBookOnce(
                 bookId = bookId,
                 baseUrl = context.baseUrl,
                 accessToken = context.accessToken,
-            )
-            ResolvedAudiobookPlaybackSession(
-                playback = resolved.playback,
-                baseUrl = context.baseUrl,
-                accessToken = context.accessToken,
-                sessionId = resolved.sessionId,
             )
         }
     }
@@ -36,7 +30,7 @@ class AudiobookshelfPlaybackRepository(
         bookId: String,
         baseUrl: String,
         accessToken: String,
-    ): ResolvedPlaybackSession {
+    ): ResolvedAudiobookPlaybackSession {
         val playbackSession = apiClient.createPlaybackSession(baseUrl, accessToken, bookId)
         val sessionId = playbackSession.sessionId
             ?: throw PlaybackResolutionException("Die Playback-Session enthaelt keine ID.")
@@ -71,7 +65,7 @@ class AudiobookshelfPlaybackRepository(
             ?: 0L
         val startPosition = PlaybackQueueMath.locateStartPosition(queue, requestedStart)
 
-        return ResolvedPlaybackSession(
+        return ResolvedAudiobookPlaybackSession(
             playback = ResolvedAudiobookPlayback(
                 bookId = bookId,
                 title = playbackSession.displayTitle
@@ -91,6 +85,8 @@ class AudiobookshelfPlaybackRepository(
                 startIndex = startPosition.trackIndex,
                 startPositionMs = startPosition.positionMs,
             ),
+            baseUrl = baseUrl,
+            accessToken = accessToken,
             sessionId = sessionId,
         )
     }
@@ -112,11 +108,6 @@ class AudiobookshelfPlaybackRepository(
         }
     }
 }
-
-private data class ResolvedPlaybackSession(
-    val playback: ResolvedAudiobookPlayback,
-    val sessionId: String?,
-)
 
 class PlaybackResolutionException(
     override val message: String,

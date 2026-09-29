@@ -7,10 +7,13 @@ import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository.BrowseCollection
+import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
+import io.audiobookshelf.aaos.catalog.persistence.BookAuthorCrossRef
 import io.audiobookshelf.aaos.catalog.persistence.BookEntity
 import io.audiobookshelf.aaos.catalog.persistence.BookSeriesCrossRef
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
 import io.audiobookshelf.aaos.catalog.persistence.LibraryEntity
+import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
 import io.audiobookshelf.aaos.catalog.persistence.SeriesEntity
 import io.audiobookshelf.aaos.catalog.persistence.SyncStateEntity
 import kotlinx.coroutines.runBlocking
@@ -32,6 +35,28 @@ class SeriesCatalogTest {
 
     @After
     fun close() = database.close()
+
+    @Test
+    fun voiceSearchPrefersBooksThenAuthorsAndPreservesBlankQueryFallback() = runBlocking {
+        seedBooks()
+        database.authorDao().upsertAll(listOf(
+            AuthorEntity("same-title", "One", "One", null, 1),
+            AuthorEntity("voice-author", "Änne Example", "Änne Example", null, 1),
+        ))
+        database.bookAuthorCrossRefDao().upsertAll(listOf(
+            BookAuthorCrossRef("two", "same-title"),
+            BookAuthorCrossRef("two", "voice-author"),
+        ))
+        assertEquals("one", repository.findBestPlayableBookForVoice(" ONE ")?.id)
+        assertEquals("two", repository.findBestPlayableBookForVoice("anne example")?.id)
+        assertNull(repository.findBestPlayableBookForVoice("unknown"))
+        assertNull(repository.findBestPlayableBookForVoice("Missing"))
+        assertEquals("one", repository.findBestPlayableBookForVoice(" ")?.id)
+        database.mediaProgressDao().upsert(
+            MediaProgressEntity("two", 1000L, 10_000L, false, false, 123L, 123L, null),
+        )
+        assertEquals("two", repository.findBestPlayableBookForVoice(" ")?.id)
+    }
 
     @Test
     fun seriesNavigationPreservesBookIdsAndUsesPerSeriesPositions() = runBlocking {

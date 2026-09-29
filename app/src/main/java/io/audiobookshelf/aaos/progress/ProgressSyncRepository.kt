@@ -230,21 +230,13 @@ class ProgressSyncRepository(
             timeListenedMs = snapshot.timeListenedMs,
             lastUpdateAt = snapshot.lastUpdateAt,
         )
-        if (snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED) {
-            apiClient.closePlaybackSession(
-                baseUrl = context.baseUrl,
-                accessToken = context.accessToken,
-                sessionId = sessionId,
-                sessionUpdate = sessionUpdate,
-            )
-        } else {
-            apiClient.syncPlaybackSession(
-                baseUrl = context.baseUrl,
-                accessToken = context.accessToken,
-                sessionId = sessionId,
-                sessionUpdate = sessionUpdate,
-            )
-        }
+        apiClient.updatePlaybackSession(
+            baseUrl = context.baseUrl,
+            accessToken = context.accessToken,
+            sessionId = sessionId,
+            sessionUpdate = sessionUpdate,
+            close = snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED,
+        )
         return true
     }
 
