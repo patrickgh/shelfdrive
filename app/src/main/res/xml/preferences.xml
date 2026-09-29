@@ -63,6 +63,13 @@
             android:entries="@array/settings_skip_increment_entries"
             android:entryValues="@array/settings_skip_increment_values" />
 
+        <ListPreference
+            android:key="@string/settings_key_progress_display"
+            android:defaultValue="book"
+            android:title="@string/settings_progress_display_title"
+            android:entries="@array/settings_progress_display_entries"
+            android:entryValues="@array/settings_progress_display_values" />
+
         <CheckBoxPreference
             android:key="@string/settings_key_rewind_on_pause"
             android:defaultValue="false"

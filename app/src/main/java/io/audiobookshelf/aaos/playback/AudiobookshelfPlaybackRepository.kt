@@ -87,6 +87,7 @@ class AudiobookshelfPlaybackRepository(
                 ),
                 durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations() ?: catalogBook?.durationMs?.takeIf { it > 0L },
                 queue = queue,
+                chapters = playbackSession.chapters,
                 startIndex = startPosition.trackIndex,
                 startPositionMs = startPosition.positionMs,
             ),

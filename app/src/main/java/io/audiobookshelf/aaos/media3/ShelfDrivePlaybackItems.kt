@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.cache.PlaybackAudioCache
 import io.audiobookshelf.aaos.playback.ResolvedAudiobookPlayback
+import io.audiobookshelf.aaos.playback.PlaybackProgressRange
 import io.audiobookshelf.aaos.playback.StoredPlaybackState
 
 @OptIn(UnstableApi::class)
@@ -23,12 +24,31 @@ internal fun ResolvedAudiobookPlayback.toMedia3PlaybackItems(): List<MediaItem> 
     }
 }
 
-internal fun StoredPlaybackState.toMedia3MetadataItem(): MediaItem {
+internal fun StoredPlaybackState.toMedia3MetadataItem(
+    progressRange: PlaybackProgressRange = PlaybackProgressRange(0L, durationMs),
+    chaptersUnavailableText: String? = null,
+): MediaItem {
     return MediaItem.Builder()
         .setMediaId(BrowseNodeId.Book(bookId).serialize())
-        .setMediaMetadata(playbackMetadata(title ?: "Hoerbuch", author, title, artworkUri, durationMs))
+        .setMediaMetadata(
+            playbackMetadata(title ?: "Hoerbuch", author, title, artworkUri, durationMs)
+                .withProgressRange(progressRange, chaptersUnavailableText),
+        )
         .build()
 }
+
+@OptIn(UnstableApi::class)
+internal fun MediaMetadata.withProgressRange(
+    range: PlaybackProgressRange,
+    chaptersUnavailableText: String?,
+): MediaMetadata = buildUpon()
+    .setDurationMs(range.durationMs)
+    .setSubtitle(chaptersUnavailableText ?: range.chapter?.title)
+    .apply {
+        // AAOS hosts commonly render the artist rather than the subtitle.
+        if (chaptersUnavailableText != null) setArtist(chaptersUnavailableText)
+    }
+    .build()
 
 @OptIn(UnstableApi::class)
 private fun playbackMetadata(

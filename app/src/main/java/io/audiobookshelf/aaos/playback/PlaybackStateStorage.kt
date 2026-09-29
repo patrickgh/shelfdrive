@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.playback
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
@@ -26,6 +27,13 @@ class PlaybackStateStorage(context: Context) {
                 .takeIf { it >= 0L },
             positionMs = sharedPreferences.getLong(KEY_POSITION_MS, 0L).coerceAtLeast(0L),
             queue = decodeQueue(sharedPreferences.getString(KEY_QUEUE, null)),
+            chapters = runCatching {
+                sharedPreferences.getString(KEY_CHAPTERS, null)?.let(::decodePlaybackChapters)
+                    ?: emptyList()
+            }.getOrElse { error ->
+                Log.w("PlaybackStateStorage", "Invalid stored chapters; using book progress.", error)
+                emptyList()
+            },
             playbackSpeed = sharedPreferences.getFloat(KEY_PLAYBACK_SPEED, 1f)
                 .takeIf { it.isFinite() && it > 0f }
                 ?: 1f,
@@ -41,6 +49,7 @@ class PlaybackStateStorage(context: Context) {
             putLong(KEY_DURATION_MS, state.durationMs ?: UNKNOWN_DURATION_MS)
             putLong(KEY_POSITION_MS, state.positionMs.coerceAtLeast(0L))
             putString(KEY_QUEUE, encodeQueue(state.queue))
+            putString(KEY_CHAPTERS, encodePlaybackChapters(state.chapters))
             putFloat(KEY_PLAYBACK_SPEED, state.playbackSpeed.takeIf { it.isFinite() && it > 0f } ?: 1f)
         }
     }
@@ -114,6 +123,7 @@ class PlaybackStateStorage(context: Context) {
         private const val KEY_DURATION_MS = "duration_ms"
         private const val KEY_POSITION_MS = "position_ms"
         private const val KEY_QUEUE = "queue"
+        private const val KEY_CHAPTERS = "chapters"
         private const val KEY_PLAYBACK_SPEED = "playback_speed"
         private const val UNKNOWN_DURATION_MS = -1L
     }
@@ -128,4 +138,5 @@ data class StoredPlaybackState(
     val positionMs: Long,
     val queue: List<PlaybackTrack> = emptyList(),
     val playbackSpeed: Float,
+    val chapters: List<PlaybackChapter> = emptyList(),
 )

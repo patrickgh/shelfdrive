@@ -113,4 +113,10 @@
     <string name="media_series_sync_required">Series have not been loaded yet. Synchronize the catalog in Settings.</string>
     <string name="media_series_sync_failed">Series could not be loaded. Synchronize the catalog in Settings.</string>
     <string name="media_auth_required_title">Login required</string>
+    <string name="settings_key_progress_display" translatable="false">progress_display</string>
+    <string name="settings_progress_display_title">Progress display</string>
+    <string name="settings_progress_display_book">Book</string>
+    <string name="settings_progress_display_chapter">Chapter</string>
+    <string name="settings_progress_display_summary">Show time and progress for the whole book or the current chapter. Without chapter information, book progress is shown.</string>
+    <string name="playback_chapters_unavailable">Chapter information unavailable – showing book progress</string>
 </resources>

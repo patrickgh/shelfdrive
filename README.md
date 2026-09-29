@@ -141,6 +141,15 @@ The optional 15-second pause rewind changes the actual player position before
 the pause progress is synced. Pressing play again resumes from the rewound
 position.
 
+In Settings → Playback → Progress display, choose **Book** (the default) or
+**Chapter**. The selection takes effect immediately and is saved across restarts.
+Chapter mode shows the elapsed time and duration of the current Audiobookshelf
+chapter; seeking on the progress bar stays within that chapter. Time-skip buttons
+still move across chapter boundaries, and progress synchronization always uses
+the position within the whole book. Chapters are independent of audio files.
+If chapter information is missing or unusable at the current position, ShelfDrive
+shows book progress and a notice in the now-playing metadata.
+
 After a restart, restored playback is kept idle until the user presses play.
 This preserves the AAOS browse root while still keeping the last title available
 in the mini-player.
@@ -156,6 +165,7 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Server URL, username, and password.
 - Login/logout action.
 - Configurable skip interval.
+- Book or chapter progress display.
 - 15-second rewind-on-pause toggle.
 - Cache usage and clear-cache action.
 - App version.

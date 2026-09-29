@@ -11,6 +11,7 @@ data class ResolvedAudiobookPlayback(
     val queue: List<PlaybackTrack>,
     val startIndex: Int,
     val startPositionMs: Long,
+    val chapters: List<PlaybackChapter> = emptyList(),
 )
 
 data class ResolvedAudiobookPlaybackSession(
@@ -48,5 +49,6 @@ fun StoredPlaybackState.toResolvedPlayback(): ResolvedAudiobookPlayback? {
         queue = queue,
         startIndex = start.trackIndex,
         startPositionMs = start.positionMs,
+        chapters = chapters,
     )
 }

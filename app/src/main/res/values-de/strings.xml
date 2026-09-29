@@ -110,4 +110,9 @@
     <string name="media_series_sync_required">Serien sind noch nicht geladen. Bitte den Katalog in den Einstellungen synchronisieren.</string>
     <string name="media_series_sync_failed">Serien konnten nicht geladen werden. Bitte den Katalog in den Einstellungen synchronisieren.</string>
     <string name="media_auth_required_title">Anmeldung erforderlich</string>
+    <string name="settings_progress_display_title">Fortschrittsanzeige</string>
+    <string name="settings_progress_display_book">Buch</string>
+    <string name="settings_progress_display_chapter">Kapitel</string>
+    <string name="settings_progress_display_summary">Zeit und Fortschritt für das gesamte Buch oder das aktuelle Kapitel anzeigen. Ohne Kapitelinformationen wird der Buchfortschritt angezeigt.</string>
+    <string name="playback_chapters_unavailable">Kapitelinformationen nicht verfügbar – Buchfortschritt</string>
 </resources>

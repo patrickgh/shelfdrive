@@ -19,21 +19,12 @@ import androidx.annotation.RequiresApi
 import androidx.concurrent.futures.CallbackToFutureAdapter
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.DeviceInfo
-import androidx.media3.common.FlagSet
-import androidx.media3.common.ForwardingPlayer
+import androidx.media3.common.ForwardingSimpleBasePlayer
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Timeline
-import androidx.media3.common.TrackSelectionParameters
-import androidx.media3.common.Tracks
-import androidx.media3.common.VideoSize
-import androidx.media3.common.text.Cue
-import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -78,6 +69,8 @@ import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
 import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
 import io.audiobookshelf.aaos.playback.PlaybackCachePolicy
+import io.audiobookshelf.aaos.playback.PlaybackProgressRange
+import io.audiobookshelf.aaos.playback.playbackProgressRange
 import io.audiobookshelf.aaos.playback.PlaybackPreferences
 import io.audiobookshelf.aaos.playback.PlaybackQueueMath
 import io.audiobookshelf.aaos.playback.PlaybackResolutionException
@@ -115,7 +108,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
 import java.io.InterruptedIOException
-import java.util.IdentityHashMap
 import java.util.UUID
 
 @OptIn(UnstableApi::class)
@@ -139,7 +131,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var mediaCatalog: ShelfDriveMediaCatalog
     private lateinit var sessionPolicy: ShelfDriveSessionPolicy
     private lateinit var player: ExoPlayer
-    private lateinit var sessionPlayer: Player
+    private lateinit var sessionPlayer: AudiobookProgressPlayer
     private lateinit var playbackUpstreamFactory: DataSource.Factory
     private lateinit var mediaLibrarySession: MediaLibrarySession
 
@@ -148,6 +140,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == getString(R.string.settings_key_skip_increment) && ::player.isInitialized) {
                 applySkipIncrement()
+            }
+            if (key == getString(R.string.settings_key_progress_display) && ::sessionPlayer.isInitialized) {
+                sessionPlayer.refreshProgress()
+                updateChapterProgressUpdates()
             }
         }
 
@@ -159,6 +155,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var activePlaybackBaseUrl: String? = null
     private var lastProgressSampleElapsedRealtimeMs: Long? = null
     private var periodicProgressJob: Job? = null
+    private var chapterProgressJob: Job? = null
     private var playbackRecoveryJob: Job? = null
     private var forwardCacheJob: Job? = null
     private var activeBookCacheJob: Job? = null
@@ -375,6 +372,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             )
         }
         periodicProgressJob?.cancel()
+        chapterProgressJob?.cancel()
         playbackRecoveryJob?.cancel()
         forwardCacheJob?.cancel()
         activeBookCacheJob?.cancel()
@@ -563,6 +561,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
+        updateChapterProgressUpdates()
         diagnosticEventLogger?.record(
             "player_is_playing_changed",
             playerStateDiagnostics("isPlayingEvent" to isPlaying.toString()),
@@ -1247,6 +1246,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         stored: StoredPlaybackState,
         controller: MediaSession.ControllerInfo,
     ): MediaSession.MediaItemsWithStartPosition {
+        val showChapter = PlaybackPreferences.showChapterProgress(this)
+        val range = playbackProgressRange(stored.chapters, stored.durationMs, stored.positionMs, showChapter)
         diagnosticEventLogger?.record(
             "playback_resumption_metadata_returned",
             mapOf(
@@ -1255,9 +1256,12 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             ),
         )
         return MediaSession.MediaItemsWithStartPosition(
-            listOf(stored.toMedia3MetadataItem()),
+            listOf(stored.toMedia3MetadataItem(
+                range,
+                if (showChapter && range.chapter == null) getString(R.string.playback_chapters_unavailable) else null,
+            )),
             0,
-            stored.positionMs.coerceAtLeast(0L),
+            range.relativePosition(stored.positionMs),
         )
     }
 
@@ -1571,6 +1575,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         val bookChanged = activeBook?.bookId != playback?.bookId
         val cancelledCacheJob = if (bookChanged) cancelForwardCache() else null
         activeBook = playback
+        updateChapterProgressUpdates()
         if (bookChanged) {
             playback?.let { retainActiveBookCache(it, cancelledCacheJob) }
         }
@@ -1649,6 +1654,22 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         return dataSpec.withUri(
             Uri.parse(playbackSessionTrackUrl(baseUrl, sessionId, track.trackIndex)),
         )
+    }
+
+    private fun updateChapterProgressUpdates() {
+        chapterProgressJob?.cancel()
+        if (!::sessionPlayer.isInitialized || !player.isPlaying ||
+            !PlaybackPreferences.showChapterProgress(this) || activeBook?.chapters.isNullOrEmpty()
+        ) {
+            return
+        }
+        // Chapters can change within a single audio file, without an ExoPlayer event.
+        chapterProgressJob = serviceScope.launch {
+            while (true) {
+                delay(250L)
+                sessionPlayer.refreshProgress()
+            }
+        }
     }
 
     private fun startPeriodicProgressUpdates() {
@@ -2031,6 +2052,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 durationMs = playback.durationMs,
                 positionMs = logicalPlaybackPositionMs(),
                 queue = playback.queue,
+                chapters = playback.chapters,
                 playbackSpeed = player.playbackParameters.speed,
             ),
         )
@@ -2087,251 +2109,119 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             }
     }
 
-    private inner class AudiobookProgressPlayer(delegate: Player) : ForwardingPlayer(delegate) {
-        private val listeners = IdentityHashMap<Player.Listener, Player.Listener>()
+    private inner class AudiobookProgressPlayer(delegate: Player) : ForwardingSimpleBasePlayer(delegate) {
+        private var displayedBookId: String? = null
+        private var displayedRange: PlaybackProgressRange? = null
+        private var chaptersUnavailable = false
 
-        override fun getAvailableCommands(): Player.Commands {
-            return audiobookCommands(super.getAvailableCommands())
-        }
+        fun refreshProgress() = invalidateState()
 
-        override fun isCommandAvailable(command: Int): Boolean {
-            return availableCommands.contains(command)
-        }
-
-        private fun audiobookCommands(commands: Player.Commands): Player.Commands {
-            return commands
-                .buildUpon()
+        override fun getState(): State {
+            val source = super.getState()
+            val commands = source.availableCommands.buildUpon()
                 .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
                 .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
                 .remove(Player.COMMAND_SEEK_TO_NEXT)
                 .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
-                // Hardware next/previous controls use the same time jumps as the screen buttons.
-                .addIf(Player.COMMAND_SEEK_TO_NEXT, commands.contains(Player.COMMAND_SEEK_FORWARD))
-                .addIf(Player.COMMAND_SEEK_TO_PREVIOUS, commands.contains(Player.COMMAND_SEEK_BACK))
-                .remove(Player.COMMAND_SEEK_TO_MEDIA_ITEM)
+                // Hardware next/previous controls remain book-global time jumps.
+                .addIf(Player.COMMAND_SEEK_TO_NEXT, source.availableCommands.contains(Player.COMMAND_SEEK_FORWARD))
+                .addIf(Player.COMMAND_SEEK_TO_PREVIOUS, source.availableCommands.contains(Player.COMMAND_SEEK_BACK))
                 .remove(Player.COMMAND_SET_SPEED_AND_PITCH)
                 .build()
-        }
+            val builder = source.buildUpon().setAvailableCommands(commands)
+            val playback = activeBook
+            val track = playback?.queue?.getOrNull(source.currentMediaItemIndex)
+            if (playback == null || track == null || source.timeline.isEmpty ||
+                player.currentMediaItem?.mediaId != BrowseNodeId.Book(playback.bookId).serialize()
+            ) {
+                displayedBookId = null
+                displayedRange = null
+                chaptersUnavailable = false
+                return builder.build()
+            }
 
-        override fun addListener(listener: Player.Listener) {
-            synchronized(listeners) {
-                val forwardingListener = listeners.getOrPut(listener) {
-                    // Java default listener methods need explicit forwarding in Kotlin.
-                    @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-                    object : Player.Listener {
-                        private var lastCommands = availableCommands
-                        private var commandsChanged = false
-
-                        override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
-                            val commands = audiobookCommands(availableCommands)
-                            if (commands != lastCommands) {
-                                lastCommands = commands
-                                commandsChanged = true
-                                listener.onAvailableCommandsChanged(commands)
-                            }
-                        }
-
-                        override fun onEvents(player: Player, events: Player.Events) {
-                            val filteredEvents = if (
-                                events.contains(Player.EVENT_AVAILABLE_COMMANDS_CHANGED) && !commandsChanged
-                            ) {
-                                Player.Events(
-                                    FlagSet.Builder().apply {
-                                        for (index in 0 until events.size()) {
-                                            val event = events[index]
-                                            if (event != Player.EVENT_AVAILABLE_COMMANDS_CHANGED) {
-                                                add(event)
-                                            }
-                                        }
-                                    }.build(),
-                                )
-                            } else {
-                                events
-                            }
-                            commandsChanged = false
-                            if (filteredEvents.size() > 0) {
-                                listener.onEvents(player, filteredEvents)
-                            }
-                        }
-
-                        override fun onTimelineChanged(timeline: Timeline, reason: Int) =
-                            listener.onTimelineChanged(timeline, reason)
-
-                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) =
-                            listener.onMediaItemTransition(mediaItem, reason)
-
-                        override fun onTracksChanged(tracks: Tracks) = listener.onTracksChanged(tracks)
-
-                        override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) =
-                            listener.onMediaMetadataChanged(mediaMetadata)
-
-                        override fun onPlaylistMetadataChanged(mediaMetadata: MediaMetadata) =
-                            listener.onPlaylistMetadataChanged(mediaMetadata)
-
-                        override fun onIsLoadingChanged(isLoading: Boolean) = listener.onIsLoadingChanged(isLoading)
-
-                        override fun onLoadingChanged(isLoading: Boolean) = listener.onLoadingChanged(isLoading)
-
-                        override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) =
-                            listener.onTrackSelectionParametersChanged(parameters)
-
-                        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) =
-                            listener.onPlayerStateChanged(playWhenReady, playbackState)
-
-                        override fun onPlaybackStateChanged(playbackState: Int) =
-                            listener.onPlaybackStateChanged(playbackState)
-
-                        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) =
-                            listener.onPlayWhenReadyChanged(playWhenReady, reason)
-
-                        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) =
-                            listener.onPlaybackSuppressionReasonChanged(playbackSuppressionReason)
-
-                        override fun onIsPlayingChanged(isPlaying: Boolean) = listener.onIsPlayingChanged(isPlaying)
-
-                        override fun onRepeatModeChanged(repeatMode: Int) = listener.onRepeatModeChanged(repeatMode)
-
-                        override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) =
-                            listener.onShuffleModeEnabledChanged(shuffleModeEnabled)
-
-                        override fun onPlayerError(error: PlaybackException) = listener.onPlayerError(error)
-
-                        override fun onPlayerErrorChanged(error: PlaybackException?) = listener.onPlayerErrorChanged(error)
-
-                        override fun onPositionDiscontinuity(reason: Int) = listener.onPositionDiscontinuity(reason)
-
-                        override fun onPositionDiscontinuity(
-                            oldPosition: Player.PositionInfo,
-                            newPosition: Player.PositionInfo,
-                            reason: Int,
-                        ) = listener.onPositionDiscontinuity(oldPosition, newPosition, reason)
-
-                        override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) =
-                            listener.onPlaybackParametersChanged(playbackParameters)
-
-                        override fun onSeekBackIncrementChanged(seekBackIncrementMs: Long) =
-                            listener.onSeekBackIncrementChanged(seekBackIncrementMs)
-
-                        override fun onSeekForwardIncrementChanged(seekForwardIncrementMs: Long) =
-                            listener.onSeekForwardIncrementChanged(seekForwardIncrementMs)
-
-                        override fun onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs: Long) =
-                            listener.onMaxSeekToPreviousPositionChanged(maxSeekToPreviousPositionMs)
-
-                        override fun onVideoSizeChanged(videoSize: VideoSize) = listener.onVideoSizeChanged(videoSize)
-
-                        override fun onSurfaceSizeChanged(width: Int, height: Int) = listener.onSurfaceSizeChanged(width, height)
-
-                        override fun onRenderedFirstFrame() = listener.onRenderedFirstFrame()
-
-                        override fun onAudioSessionIdChanged(audioSessionId: Int) = listener.onAudioSessionIdChanged(audioSessionId)
-
-                        override fun onAudioAttributesChanged(audioAttributes: AudioAttributes) =
-                            listener.onAudioAttributesChanged(audioAttributes)
-
-                        override fun onVolumeChanged(volume: Float) = listener.onVolumeChanged(volume)
-
-                        override fun onSkipSilenceEnabledChanged(skipSilenceEnabled: Boolean) =
-                            listener.onSkipSilenceEnabledChanged(skipSilenceEnabled)
-
-                        override fun onCues(cues: List<Cue>) = listener.onCues(cues)
-
-                        override fun onCues(cueGroup: CueGroup) = listener.onCues(cueGroup)
-
-                        override fun onMetadata(metadata: Metadata) = listener.onMetadata(metadata)
-
-                        override fun onDeviceInfoChanged(deviceInfo: DeviceInfo) = listener.onDeviceInfoChanged(deviceInfo)
-
-                        override fun onDeviceVolumeChanged(volume: Int, muted: Boolean) = listener.onDeviceVolumeChanged(volume, muted)
-                    }
+            val showChapter = PlaybackPreferences.showChapterProgress(this@ShelfDriveMediaLibraryService)
+            val bookPositionMs = track.startOffsetMs + source.contentPositionMsSupplier.get()
+            val range = playbackProgressRange(playback.chapters, playback.durationMs, bookPositionMs, showChapter)
+            val unavailable = showChapter && range.chapter == null
+            if (unavailable && (!chaptersUnavailable || displayedBookId != playback.bookId)) {
+                diagnosticEventLogger?.record(
+                    "chapter_progress_unavailable",
+                    mapOf("bookId" to playback.bookId, "positionMs" to bookPositionMs.toString()),
+                )
+                Log.w(TAG, "Chapter progress unavailable for ${playback.bookId} at $bookPositionMs ms.")
+            }
+            val metadata = player.mediaMetadata.withProgressRange(
+                range,
+                if (unavailable) getString(R.string.playback_chapters_unavailable) else null,
+            )
+            val item = MediaItem.Builder()
+                .setMediaId(BrowseNodeId.Book(playback.bookId).serialize())
+                .setMediaMetadata(metadata)
+                .build()
+            // The host sees one book. Audio-file indices remain private to ExoPlayer.
+            val itemData = MediaItemData.Builder(playback.bookId)
+                .setMediaItem(item)
+                .setMediaMetadata(metadata)
+                .setTracks(player.currentTracks)
+                .setIsSeekable(source.availableCommands.contains(Player.COMMAND_SEEK_IN_CURRENT_MEDIA_ITEM))
+                .setDurationUs(range.durationMs?.let { it * 1_000L } ?: C.TIME_UNSET)
+                .build()
+            builder.setPlaylist(listOf(itemData))
+                .setCurrentMediaItemIndex(0)
+                // Capture the source suppliers: Media3 freezes their old values on seeks/file transitions.
+                .setContentPositionMs { range.relativePosition(track.startOffsetMs + source.contentPositionMsSupplier.get()) }
+                .setContentBufferedPositionMs {
+                    range.relativePosition(track.startOffsetMs + source.contentBufferedPositionMsSupplier.get())
                 }
-                super.addListener(forwardingListener)
+                .setTotalBufferedDurationMs {
+                    minOf(
+                        source.totalBufferedDurationMsSupplier.get(),
+                        (range.durationMs ?: Long.MAX_VALUE) -
+                            range.relativePosition(track.startOffsetMs + source.contentPositionMsSupplier.get()),
+                    ).coerceAtLeast(0L)
+                }
+            if (source.hasPositionDiscontinuity) {
+                builder.setPositionDiscontinuity(source.positionDiscontinuityReason, range.relativePosition(bookPositionMs))
+            } else if (displayedBookId == playback.bookId && displayedRange != null && displayedRange != range) {
+                builder.setPositionDiscontinuity(Player.DISCONTINUITY_REASON_INTERNAL, range.relativePosition(bookPositionMs))
             }
+            displayedBookId = playback.bookId
+            displayedRange = range
+            chaptersUnavailable = unavailable
+            return builder.build()
         }
 
-        override fun removeListener(listener: Player.Listener) {
-            synchronized(listeners) {
-                super.removeListener(listeners.remove(listener) ?: listener)
+        override fun handleSeek(mediaItemIndex: Int, positionMs: Long, seekCommand: Int): ListenableFuture<*> {
+            if (activeBook == null) return super.handleSeek(mediaItemIndex, positionMs, seekCommand)
+            when (seekCommand) {
+                Player.COMMAND_SEEK_BACK, Player.COMMAND_SEEK_TO_PREVIOUS ->
+                    seekBy(-PlaybackPreferences.skipIncrementMs(this@ShelfDriveMediaLibraryService))
+                Player.COMMAND_SEEK_FORWARD, Player.COMMAND_SEEK_TO_NEXT ->
+                    seekBy(PlaybackPreferences.skipIncrementMs(this@ShelfDriveMediaLibraryService))
+                else -> {
+                    // Indexed seeks from the host refer to its single displayed book window.
+                    if (mediaItemIndex != 0 && mediaItemIndex != C.INDEX_UNSET) return Futures.immediateVoidFuture()
+                    val range = displayedRange ?: return Futures.immediateVoidFuture()
+                    seekToLogicalPosition(range.bookPosition(if (positionMs == C.TIME_UNSET) 0L else positionMs))
+                    emitProgress(PlaybackProgressReason.SEEKED)
+                }
             }
+            return Futures.immediateVoidFuture()
         }
 
-        override fun getDuration(): Long {
-            return activeBook?.durationMs?.takeIf { it > 0L } ?: super.getDuration()
-        }
-
-        override fun getCurrentPosition(): Long {
-            return logicalPlaybackPositionMs()
-        }
-
-        override fun getBufferedPosition(): Long {
-            return logicalBufferedPositionMs()
-        }
-
-        override fun getBufferedPercentage(): Int {
-            val durationMs = duration
-            if (durationMs == C.TIME_UNSET || durationMs <= 0L) {
-                return super.getBufferedPercentage()
+        override fun handleSetPlayWhenReady(playWhenReady: Boolean): ListenableFuture<*> {
+            if (playWhenReady) {
+                playbackRecoveryJob?.cancel()
+                playbackSessionRecoveryAttempts = 0
+                resetTransientPlaybackRetry()
+                if (activeBook != null && player.playbackState == Player.STATE_IDLE) {
+                    player.prepare()
+                }
             }
-            return ((bufferedPosition.coerceAtLeast(0L) * 100L) / durationMs)
-                .coerceIn(0L, 100L)
-                .toInt()
-        }
-
-        override fun getContentDuration(): Long {
-            return duration
-        }
-
-        override fun getContentPosition(): Long {
-            return currentPosition
-        }
-
-        override fun getContentBufferedPosition(): Long {
-            return bufferedPosition
-        }
-
-        override fun seekTo(positionMs: Long) {
-            seekToLogicalPosition(positionMs)
-            emitProgress(PlaybackProgressReason.SEEKED)
-        }
-
-        override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
-            if (activeBook == null) {
-                super.seekTo(mediaItemIndex, positionMs)
-                return
-            }
-            // The session exposes book-global position and duration; AAOS repeats the current
-            // queue index when issuing a normal progress-bar seek.
-            seekToLogicalPosition(positionMs)
-            emitProgress(PlaybackProgressReason.SEEKED)
-        }
-
-        override fun seekBack() {
-            seekBy(-PlaybackPreferences.skipIncrementMs(this@ShelfDriveMediaLibraryService))
-        }
-
-        override fun seekForward() {
-            seekBy(PlaybackPreferences.skipIncrementMs(this@ShelfDriveMediaLibraryService))
-        }
-
-        override fun seekToPrevious() {
-            seekBack()
-        }
-
-        override fun seekToNext() {
-            seekForward()
-        }
-
-        override fun play() {
-            playbackRecoveryJob?.cancel()
-            playbackSessionRecoveryAttempts = 0
-            resetTransientPlaybackRetry()
-            if (activeBook != null && player.playbackState == Player.STATE_IDLE) {
-                player.prepare()
-            }
-            super.play()
-            if (activeBook != null) {
-                emitProgress(PlaybackProgressReason.STARTED)
-            }
+            val result = super.handleSetPlayWhenReady(playWhenReady)
+            if (playWhenReady && activeBook != null) emitProgress(PlaybackProgressReason.STARTED)
+            return result
         }
     }
 

@@ -6,6 +6,12 @@ import androidx.preference.PreferenceManager
 import io.audiobookshelf.aaos.R
 
 object PlaybackPreferences {
+    fun showChapterProgress(context: Context): Boolean {
+        val appContext = context.applicationContext
+        return PreferenceManager.getDefaultSharedPreferences(appContext)
+            .getString(appContext.getString(R.string.settings_key_progress_display), "book") == "chapter"
+    }
+
     fun isRewindOnPauseEnabled(context: Context): Boolean {
         val appContext = context.applicationContext
         return PreferenceManager.getDefaultSharedPreferences(appContext)

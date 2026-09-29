@@ -1,6 +1,9 @@
 package io.audiobookshelf.aaos.absapi
 
+import android.util.Log
 import io.audiobookshelf.aaos.BuildConfig
+import io.audiobookshelf.aaos.playback.PlaybackChapter
+import io.audiobookshelf.aaos.playback.parsePlaybackChapters
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -288,10 +291,21 @@ class AudiobookshelfApiClient(
             title = metadata?.optString("title").takeIf { !it.isNullOrBlank() },
             author = metadata?.optString("authorName").takeIf { !it.isNullOrBlank() },
             coverPath = media?.optString("coverPath").takeIf { !it.isNullOrBlank() },
-            durationMs = secondsToMillis(media?.optDouble("duration")),
+            durationMs = secondsToMillis(root.optDouble("duration")) ?: secondsToMillis(media?.optDouble("duration")),
             currentTimeMs = secondsToMillis(root.optDouble("currentTime")),
             startTimeMs = secondsToMillis(root.optDouble("startTime")),
             audioTracks = tracks,
+            chapters = runCatching {
+                val chapters = when {
+                    root.has("chapters") -> root.getJSONArray("chapters")
+                    media?.has("chapters") == true -> media.getJSONArray("chapters")
+                    else -> null
+                }
+                parsePlaybackChapters(chapters)
+            }.getOrElse { error ->
+                Log.w("AudiobookshelfApi", "Invalid chapter data for book $itemId; using book progress.", error)
+                emptyList()
+            },
         )
     }
 
@@ -698,6 +712,7 @@ data class PlaybackSessionSummary(
     val currentTimeMs: Long?,
     val startTimeMs: Long?,
     val audioTracks: List<PlaybackTrackSummary>,
+    val chapters: List<PlaybackChapter> = emptyList(),
 )
 
 data class PlaybackTrackSummary(
