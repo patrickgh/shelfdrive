@@ -12,6 +12,7 @@ import okio.Buffer
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,11 +63,14 @@ class LibraryItemsFetchTest {
                 "/api/items/batch/get" -> {
                     assertEquals(listOf("one", "two"), requestedIds(request))
                     val first = expandedBook("one")
+                    first.getJSONObject("media").put("coverPath", "/covers/one.jpg")
                     first.getJSONObject("media").getJSONObject("metadata").put("series", JSONArray(
                         """[{"id":"main","name":"Main","sequence":"1.5"},{"id":"other","name":"Other","sequence":"2"}]""",
                     ))
                     // Batch responses need not be in the same order as the requested IDs.
-                    JSONObject().put("libraryItems", JSONArray().put(expandedBook("two")).put(first)).toString()
+                    val second = expandedBook("two")
+                    second.getJSONObject("media").put("coverPath", JSONObject.NULL)
+                    JSONObject().put("libraryItems", JSONArray().put(second).put(first)).toString()
                 }
                 else -> error("Unexpected request: ${request.url}")
             }
@@ -81,6 +85,8 @@ class LibraryItemsFetchTest {
         assertTrue(books[1].series.isEmpty())
         assertEquals("Author", books[0].authorDisplay)
         assertEquals(120000L, books[0].durationMs)
+        assertEquals("/covers/one.jpg", books[0].coverPath)
+        assertNull(books[1].coverPath)
         assertEquals(listOf("GET /api/libraries/library/items", "POST /api/items/batch/get"), requests)
     }
 

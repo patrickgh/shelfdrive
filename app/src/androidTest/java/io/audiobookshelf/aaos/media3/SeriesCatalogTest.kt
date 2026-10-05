@@ -1,9 +1,14 @@
 package io.audiobookshelf.aaos.media3
 
+import android.content.res.Configuration
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaConstants
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.audiobookshelf.aaos.R
+import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
 import io.audiobookshelf.aaos.browser.BrowseNodeId
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository
 import io.audiobookshelf.aaos.browser.CatalogBrowseRepository.BrowseCollection
@@ -25,7 +30,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.util.Locale
 
+@OptIn(UnstableApi::class)
 @RunWith(AndroidJUnit4::class)
 class SeriesCatalogTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -85,6 +92,50 @@ class SeriesCatalogTest {
         assertNotNull(repository.getPlayableBook("one"))
         database.bookDao().deleteByIds(listOf("two"))
         assertTrue(repository.getBooksForSeries("b").isEmpty())
+    }
+
+    @Test
+    fun seriesTilesUseFirstAvailableCoverInVolumeOrderAcrossBrowsePaths() = runBlocking {
+        seedBooks()
+        database.bookDao().upsertAll(listOf(
+            book("one", "Z title").copy(coverPath = "/covers/one.jpg"),
+            book("two", "A title").copy(coverPath = "/covers/two.jpg"),
+            book("missing", "Missing", false).copy(coverPath = "/covers/missing.jpg"),
+        ))
+        database.seriesDao().upsertAll(listOf(SeriesEntity("a", "Alpha"), SeriesEntity("b", "Beta")))
+        database.bookSeriesCrossRefDao().upsertAll(listOf(
+            BookSeriesCrossRef("one", "a", "1.5"), BookSeriesCrossRef("two", "a", "10"),
+            BookSeriesCrossRef("missing", "a", "0"),
+            BookSeriesCrossRef("one", "b", "10"), BookSeriesCrossRef("two", "b", "1.5"),
+        ))
+        val firstCover = ArtworkUriFactory.bookCover("one", ArtworkUriFactory.signatureFor("/covers/one.jpg"))
+        val secondCover = ArtworkUriFactory.bookCover("two", ArtworkUriFactory.signatureFor("/covers/two.jpg"))
+        assertEquals(listOf(firstCover, secondCover), catalog.loadChildren("series").map { it.mediaMetadata.artworkUri })
+        assertEquals(firstCover, catalog.loadItem("series:a")?.mediaMetadata?.artworkUri)
+
+        database.seriesDao().upsertAll((1..120).map { SeriesEntity("extra-$it", "Other $it") })
+        assertTrue(catalog.loadChildren("series").any { it.mediaId == "series:bucket:A" })
+        assertEquals(firstCover, catalog.loadChildren("series:bucket:A").single().mediaMetadata.artworkUri)
+        for (parentId in listOf("series", "series:bucket:A")) {
+            assertEquals(MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM,
+                catalog.loadItem(parentId)?.mediaMetadata?.extras?.getInt(MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE))
+        }
+
+        // Include the literal null stored by older catalog parsing as well as absent and blank paths.
+        for (missingPath in listOf(null, "", " ", "null")) {
+            database.bookDao().upsertAll(listOf(book("one", "Z title").copy(coverPath = missingPath)))
+            assertEquals(secondCover, catalog.loadItem("series:a")?.mediaMetadata?.artworkUri)
+        }
+        database.bookDao().upsertAll(listOf(book("two", "A title")))
+        val fallback = catalog.loadItem("series:a")?.mediaMetadata?.artworkUri
+        assertEquals("android.resource", fallback?.scheme)
+        assertEquals("ic_menu_series", fallback?.lastPathSegment)
+
+        val germanContext = context.createConfigurationContext(Configuration(context.resources.configuration).apply {
+            setLocale(Locale.GERMAN)
+        })
+        assertEquals("2 Hörbücher", ShelfDriveMediaCatalog(germanContext, repository)
+            .loadItem("series:a")?.mediaMetadata?.artist.toString())
     }
 
     @Test

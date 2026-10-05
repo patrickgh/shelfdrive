@@ -189,7 +189,7 @@ class AudiobookshelfApiClient(
                                 .ifBlank { item.optString("title") },
                             subtitle = metadata.optString("subtitle").takeIf { it.isNotBlank() },
                             description = metadata.optString("description").takeIf { it.isNotBlank() },
-                            coverPath = media.optString("coverPath").takeIf { it.isNotBlank() },
+                            coverPath = (media.opt("coverPath") as? String)?.takeIf { it.isNotBlank() },
                             durationMs = media.optDouble("duration").takeIf { !it.isNaN() }?.let { (it * 1000).toLong() },
                             authorDisplay = metadata.optString("authorName").takeIf { it.isNotBlank() },
                             authors = parseAuthors(metadata),

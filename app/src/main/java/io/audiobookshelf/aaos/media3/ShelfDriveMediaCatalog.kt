@@ -63,7 +63,7 @@ internal class ShelfDriveMediaCatalog(
                 .map(::buildPlayableBookItem)
             is BrowseNodeId.Book -> emptyList()
             BrowseNodeId.Series -> loadSeriesItems()
-            is BrowseNodeId.SeriesBucket -> browseRepository.getSeriesForBucket(node.bucket).map(::buildSeriesItem)
+            is BrowseNodeId.SeriesBucket -> browseRepository.getSeriesForBucket(node.bucket).map { buildSeriesItem(it) }
             is BrowseNodeId.SeriesDetail -> browseRepository.getBooksForSeries(node.seriesId)
                 .map(::buildSeriesBookItem)
                 .ifEmpty { listOf(buildSeriesStatusItem(parentId, R.string.media_series_no_playable_books)) }
@@ -84,7 +84,7 @@ internal class ShelfDriveMediaCatalog(
             is BrowseNodeId.AuthorBooksBucket -> buildAuthorBooksBucketItem(node.authorId, node.bucket)
             BrowseNodeId.Series -> buildSeriesRootItem()
             is BrowseNodeId.SeriesBucket -> buildSeriesBucketItem(node.bucket)
-            is BrowseNodeId.SeriesDetail -> browseRepository.getSeries(node.seriesId)?.let(::buildSeriesItem)
+            is BrowseNodeId.SeriesDetail -> browseRepository.getSeries(node.seriesId)?.let { buildSeriesItem(it) }
         }
     }
 
@@ -139,7 +139,7 @@ internal class ShelfDriveMediaCatalog(
     private suspend fun loadSeriesItems(): List<MediaItem> {
         return when (val series = browseRepository.getSeriesRoot()) {
             BrowseCollection.Empty -> listOf(buildSeriesStatusItem(BrowseNodeId.Series.serialize(), R.string.media_series_empty))
-            is BrowseCollection.Direct -> series.items.map(::buildSeriesItem)
+            is BrowseCollection.Direct -> series.items.map { buildSeriesItem(it) }
             is BrowseCollection.Grouped -> series.groups.map { buildSeriesBucketItem(it.key, it.count) }
         }
     }
@@ -148,23 +148,30 @@ internal class ShelfDriveMediaCatalog(
         mediaId = BrowseNodeId.Series.serialize(),
         title = context.getString(R.string.media_root_series),
         iconUri = drawableUri(R.drawable.ic_menu_series),
-        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
     )
 
     private fun buildSeriesBucketItem(bucket: String, count: Int? = null): MediaItem = buildBrowsableItem(
         mediaId = BrowseNodeId.SeriesBucket(bucket).serialize(),
         title = bucket,
         subtitle = count?.let { context.resources.getQuantityString(R.plurals.media_series_group_summary, it, it) },
-        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+        extras = childStyleExtras(browsableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM),
     )
 
-    private fun buildSeriesItem(series: SeriesWithBookCount): MediaItem = buildBrowsableItem(
-        mediaId = BrowseNodeId.SeriesDetail(series.series.id).serialize(),
-        title = series.series.name,
-        subtitle = context.resources.getQuantityString(R.plurals.media_series_book_count, series.numBooks, series.numBooks),
-        iconUri = drawableUri(R.drawable.ic_menu_series),
-        extras = childStyleExtras(playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
-    )
+    private suspend fun buildSeriesItem(series: SeriesWithBookCount): MediaItem {
+        val coverBook = browseRepository.getBooksForSeries(series.series.id)
+            .firstOrNull { !it.book.coverPath.isNullOrBlank() && it.book.coverPath != "null" }
+            ?.book
+        return buildBrowsableItem(
+            mediaId = BrowseNodeId.SeriesDetail(series.series.id).serialize(),
+            title = series.series.name,
+            subtitle = context.resources.getQuantityString(R.plurals.media_series_book_count, series.numBooks, series.numBooks),
+            iconUri = coverBook?.let {
+                ArtworkUriFactory.bookCover(it.id, ArtworkUriFactory.signatureFor(it.coverPath))
+            } ?: drawableUri(R.drawable.ic_menu_series),
+            extras = childStyleExtras(playableStyle = MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM),
+        )
+    }
 
     private fun buildSeriesBookItem(seriesBook: SeriesBook): MediaItem {
         val item = buildPlayableBookItem(seriesBook.book)

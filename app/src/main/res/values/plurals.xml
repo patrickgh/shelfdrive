@@ -18,7 +18,7 @@
         <item quantity="other">%d series</item>
     </plurals>
     <plurals name="media_series_book_count">
-        <item quantity="one">%d playable audiobook</item>
-        <item quantity="other">%d playable audiobooks</item>
+        <item quantity="one">%d audiobook</item>
+        <item quantity="other">%d audiobooks</item>
     </plurals>
 </resources>
