@@ -2,6 +2,7 @@ package io.audiobookshelf.aaos.settings
 
 import android.content.ComponentName
 import android.os.Bundle
+import io.audiobookshelf.aaos.server.ServerType
 import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
@@ -108,7 +109,7 @@ class SettingsActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    internal fun performLogin(serverUrl: String?, username: String?, password: String?) {
+    internal fun performLogin(serverType: ServerType, serverUrl: String?, username: String?, password: String?) {
         if (state.loginInProgress) {
             return
         }
@@ -119,6 +120,7 @@ class SettingsActivity : AppCompatActivity() {
         state = state.copy(loginInProgress = true)
         renderState()
         val args = Bundle().apply {
+            putString(AuthCommands.EXTRA_SERVER_TYPE, serverType.name)
             putString(AuthCommands.EXTRA_SERVER_URL, serverUrl)
             putString(AuthCommands.EXTRA_USERNAME, username)
             putString(AuthCommands.EXTRA_PASSWORD, password)
@@ -131,7 +133,8 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     internal fun performLogout() {
-        state = state.copy(loginInProgress = false)
+        state = state.copy(loginInProgress = true)
+        renderState()
         sendCommand(AuthCommands.CMD_LOGOUT, null, ::handleAuthResult)
     }
 

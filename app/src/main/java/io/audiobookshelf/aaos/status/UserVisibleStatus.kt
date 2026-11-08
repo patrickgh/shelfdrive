@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.status
 
 object UserVisibleStatus {
+    const val PENDING_PROGRESS_LOGOUT = "pending_progress_logout"
     const val SERVER_UNREACHABLE = "server_unreachable"
     const val CATALOG_SYNC_FAILED = "catalog_sync_failed"
     const val CATALOG_SYNC_RUNNING = "catalog_sync_running"

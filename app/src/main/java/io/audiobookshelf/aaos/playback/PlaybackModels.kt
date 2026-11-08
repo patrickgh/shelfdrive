@@ -12,6 +12,7 @@ data class ResolvedAudiobookPlayback(
     val startIndex: Int,
     val startPositionMs: Long,
     val chapters: List<PlaybackChapter> = emptyList(),
+    val sourceId: String? = null,
 )
 
 data class ResolvedAudiobookPlaybackSession(
@@ -19,6 +20,7 @@ data class ResolvedAudiobookPlaybackSession(
     val baseUrl: String,
     val accessToken: String,
     val sessionId: String?,
+    val account: io.audiobookshelf.aaos.auth.AuthenticatedRequestContext,
 )
 
 data class PlaybackTrack(
@@ -28,6 +30,9 @@ data class PlaybackTrack(
     val mimeType: String?,
     val durationMs: Long?,
     val startOffsetMs: Long,
+    val streamPath: String? = null,
+    val clipStartMs: Long = 0,
+    val clipEndMs: Long? = null,
 )
 
 data class QueueStartPosition(
@@ -50,5 +55,6 @@ fun StoredPlaybackState.toResolvedPlayback(): ResolvedAudiobookPlayback? {
         startIndex = start.trackIndex,
         startPositionMs = start.positionMs,
         chapters = chapters,
+        sourceId = sourceId,
     )
 }

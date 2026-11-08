@@ -1,8 +1,12 @@
 package io.audiobookshelf.aaos.auth
 
 import io.audiobookshelf.aaos.absapi.ApiException
+import io.audiobookshelf.aaos.server.ServerType
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -13,8 +17,25 @@ class AuthenticatedRequestRunner(
     private val authRepository: AuthRepository,
 ) {
     private val recoveryMutex = Mutex()
+    private val accountChangeMutex = Mutex()
+    private val activeRequests = MutableStateFlow(0)
 
-    suspend fun <T> execute(block: suspend (AuthenticatedRequestContext) -> T): T = withContext(Dispatchers.IO) {
+    suspend fun <T> withSessionChange(block: suspend () -> T): T = accountChangeMutex.withLock {
+        activeRequests.first { it == 0 }
+        block()
+    }
+
+    suspend fun <T> execute(block: suspend (AuthenticatedRequestContext) -> T): T {
+        // Catalog sync and playback can run together; changing accounts waits for both to finish.
+        accountChangeMutex.withLock { activeRequests.update { it + 1 } }
+        return try {
+            executeLocked(block)
+        } finally {
+            activeRequests.update { it - 1 }
+        }
+    }
+
+    private suspend fun <T> executeLocked(block: suspend (AuthenticatedRequestContext) -> T): T = withContext(Dispatchers.IO) {
         val initialContext = loadContextOrRecover()
         try {
             block(initialContext)
@@ -86,6 +107,7 @@ class AuthenticatedRequestRunner(
         val baseUrl = validation.normalizedUrl ?: return null
         val accessToken = stored.accessToken?.takeIf { it.isNotBlank() } ?: return null
         return AuthenticatedRequestContext(
+            serverType = stored.serverType,
             baseUrl = baseUrl,
             accessToken = accessToken,
             username = stored.username?.trim()?.takeIf { it.isNotBlank() },
@@ -94,6 +116,7 @@ class AuthenticatedRequestRunner(
 }
 
 data class AuthenticatedRequestContext(
+    val serverType: ServerType = ServerType.AUDIOBOOKSHELF,
     val baseUrl: String,
     val accessToken: String,
     val username: String?,

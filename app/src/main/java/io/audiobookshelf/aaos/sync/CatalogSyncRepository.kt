@@ -2,7 +2,8 @@ package io.audiobookshelf.aaos.sync
 
 import android.util.Log
 import androidx.room.withTransaction
-import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
+import io.audiobookshelf.aaos.server.ServerApis
+import io.audiobookshelf.aaos.server.AudiobookServerApi
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.auth.AuthenticationRequiredException
 import io.audiobookshelf.aaos.catalog.persistence.AuthorEntity
@@ -23,7 +24,7 @@ import java.io.IOException
 class CatalogSyncRepository(
     private val database: CatalogDatabase,
     private val authenticatedRequestRunner: AuthenticatedRequestRunner,
-    private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
+    private val serverApis: ServerApis = ServerApis(),
 ) {
     private val syncMutex = Mutex()
 
@@ -43,6 +44,7 @@ class CatalogSyncRepository(
         return@withContext try {
             authenticatedRequestRunner.execute { context ->
                 performSync(
+                    apiClient = serverApis.forType(context.serverType),
                     baseUrl = context.baseUrl,
                     accessToken = context.accessToken,
                 )
@@ -82,6 +84,7 @@ class CatalogSyncRepository(
     }
 
     private suspend fun performSync(
+        apiClient: AudiobookServerApi,
         baseUrl: String,
         accessToken: String,
     ): SyncSnapshot {
@@ -162,7 +165,10 @@ class CatalogSyncRepository(
 
         database.withTransaction {
             database.libraryDao().upsertAll(libraryEntities)
-            database.authorDao().upsertAll(authorMap.values.sortedBy { it.sortName })
+            val authorCounts = crossRefs.groupingBy { it.authorId }.eachCount()
+            database.authorDao().upsertAll(authorMap.values.map {
+                it.copy(numBooks = authorCounts[it.id] ?: 0)
+            }.sortedBy { it.sortName })
             database.bookDao().upsertAll(books)
             database.seriesDao().upsertAll(seriesMap.values.toList())
             database.bookSeriesCrossRefDao().clearAll()

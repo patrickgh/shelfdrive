@@ -3,9 +3,9 @@
 Effective date: 2026-08-11
 
 ShelfDrive is an Android Automotive OS media app for connecting a vehicle media
-host to a user-configured Audiobookshelf server.
+host to a user-configured Audiobookshelf or BookOrbit server.
 
-ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
+ShelfDrive is an independent project and is not affiliated with Audiobookshelf or BookOrbit.
 
 Privacy contact: dsaos9632@gmail.com
 
@@ -14,7 +14,7 @@ Privacy contact: dsaos9632@gmail.com
 ShelfDrive does not include advertising, analytics SDKs, tracking SDKs, or a
 developer-operated content service.
 
-ShelfDrive connects to the Audiobookshelf server URL that you enter in the app
+ShelfDrive connects to the selected Audiobookshelf or BookOrbit server URL that you enter in the app
 settings.
 
 ShelfDrive stores account, catalog, artwork, playback, cache, and settings data
@@ -26,11 +26,11 @@ listening progress.
 
 ShelfDrive may store the following data locally on your device:
 
-- Audiobookshelf server URL.
+- selected Audiobookshelf or BookOrbit server URL.
 - Username.
 - Encrypted password or session token.
-- Audiobook catalog metadata loaded from your Audiobookshelf server.
-- Cover art and author artwork loaded from your Audiobookshelf server.
+- Audiobook catalog metadata loaded from your selected Audiobookshelf or BookOrbit server.
+- Cover art and author artwork loaded from your selected Audiobookshelf or BookOrbit server.
 - Playback state, queue state, current media metadata, and listening progress.
 - Cache data for catalog, artwork, and audio playback.
 - App settings, including playback preferences.
@@ -40,7 +40,7 @@ disabled for ShelfDrive app data.
 
 ## Network Communication
 
-ShelfDrive sends requests to the Audiobookshelf server URL configured by you.
+ShelfDrive sends requests to the selected Audiobookshelf or BookOrbit server URL configured by you.
 These requests are used to:
 
 - Sign in and refresh the session.
@@ -49,13 +49,13 @@ These requests are used to:
 - Synchronize listening progress.
 - Check server compatibility.
 
-ShelfDrive supports both HTTPS and HTTP for local or private Audiobookshelf
+ShelfDrive supports both HTTPS and HTTP for local or private audiobook
 servers. HTTPS is recommended whenever your server is reachable outside a
 trusted local network.
 
-## Audiobookshelf Server Responsibility
+## Server Responsibility
 
-Your Audiobookshelf server is controlled by you or by the person or organization
+Your selected Audiobookshelf or BookOrbit server is controlled by you or by the person or organization
 that provides that server to you. ShelfDrive does not control how that server
 stores, logs, processes, or shares data.
 
@@ -74,7 +74,7 @@ services.
 
 Data may be transmitted to:
 
-- The Audiobookshelf server URL configured by you, as required for app
+- The selected Audiobookshelf or BookOrbit server URL configured by you, as required for app
   functionality.
 
 If this privacy policy is hosted on GitHub or GitHub Pages, GitHub may process
@@ -94,16 +94,16 @@ You can remove data in the following ways:
 - Clear app data in Android settings to remove ShelfDrive's local app data.
 - Uninstall ShelfDrive to remove local app data from the device.
 
-Data stored on your Audiobookshelf server must be managed on that server.
+Data stored on your selected Audiobookshelf or BookOrbit server must be managed on that server.
 ShelfDrive cannot delete server logs, server-side media metadata, server-side
 accounts, or server-side listening history except through the normal
-Audiobookshelf API operations used by the app.
+server API operations used by the app.
 
 ## Children
 
 ShelfDrive is not designed for children and does not provide child-directed
 content. The app does not include its own media catalog. Any audiobook content
-comes from the Audiobookshelf server configured by the user.
+comes from the selected Audiobookshelf or BookOrbit server configured by the user.
 
 ## Security
 

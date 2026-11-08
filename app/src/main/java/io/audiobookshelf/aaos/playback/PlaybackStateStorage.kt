@@ -16,6 +16,7 @@ class PlaybackStateStorage(context: Context) {
             ?: return null
         return StoredPlaybackState(
             bookId = bookId,
+            sourceId = sharedPreferences.getString(KEY_SOURCE_ID, null),
             title = sharedPreferences.getString(KEY_TITLE, null)
                 ?.takeIf { it.isNotBlank() },
             author = sharedPreferences.getString(KEY_AUTHOR, null)
@@ -43,6 +44,7 @@ class PlaybackStateStorage(context: Context) {
     fun save(state: StoredPlaybackState) {
         sharedPreferences.edit {
             putString(KEY_BOOK_ID, state.bookId)
+            putString(KEY_SOURCE_ID, state.sourceId)
             putString(KEY_TITLE, state.title)
             putString(KEY_AUTHOR, state.author)
             putString(KEY_ARTWORK_URI, state.artworkUri?.toString())
@@ -71,7 +73,10 @@ class PlaybackStateStorage(context: Context) {
                     .put("contentUrl", track.contentUrl)
                     .put("mimeType", track.mimeType)
                     .put("durationMs", track.durationMs)
-                    .put("startOffsetMs", track.startOffsetMs),
+                    .put("startOffsetMs", track.startOffsetMs)
+                    .put("streamPath", track.streamPath)
+                    .put("clipStartMs", track.clipStartMs)
+                    .put("clipEndMs", track.clipEndMs),
             )
         }
         return array.toString()
@@ -99,6 +104,9 @@ class PlaybackStateStorage(context: Context) {
                             mimeType = item.optString("mimeType").takeIf { it.isNotBlank() },
                             durationMs = item.optLongOrNull("durationMs"),
                             startOffsetMs = item.optLong("startOffsetMs", 0L).coerceAtLeast(0L),
+                            streamPath = if (item.isNull("streamPath")) null else item.getString("streamPath"),
+                            clipStartMs = item.optLong("clipStartMs", 0L),
+                            clipEndMs = item.optLongOrNull("clipEndMs"),
                         ),
                     )
                 }
@@ -117,6 +125,7 @@ class PlaybackStateStorage(context: Context) {
     companion object {
         private const val FILE_NAME = "playback_state"
         private const val KEY_BOOK_ID = "book_id"
+        private const val KEY_SOURCE_ID = "source_id"
         private const val KEY_TITLE = "title"
         private const val KEY_AUTHOR = "author"
         private const val KEY_ARTWORK_URI = "artwork_uri"
@@ -139,4 +148,5 @@ data class StoredPlaybackState(
     val queue: List<PlaybackTrack> = emptyList(),
     val playbackSpeed: Float,
     val chapters: List<PlaybackChapter> = emptyList(),
+    val sourceId: String? = null,
 )

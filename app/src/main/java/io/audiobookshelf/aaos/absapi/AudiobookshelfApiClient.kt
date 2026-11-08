@@ -1,6 +1,7 @@
 package io.audiobookshelf.aaos.absapi
 
 import android.util.Log
+import io.audiobookshelf.aaos.server.AudiobookServerApi
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.playback.PlaybackChapter
 import io.audiobookshelf.aaos.playback.parsePlaybackChapters
@@ -12,9 +13,9 @@ import java.util.Locale
 
 class AudiobookshelfApiClient(
     private val httpClient: AudiobookshelfHttpClient = AudiobookshelfHttpClient(),
-) {
+) : AudiobookServerApi {
 
-    suspend fun login(baseUrl: String, username: String, password: String): AuthenticatedSession {
+    override suspend fun login(baseUrl: String, username: String, password: String): AuthenticatedSession {
         val payload = JSONObject()
             .put("username", username)
             .put("password", password)
@@ -45,7 +46,7 @@ class AudiobookshelfApiClient(
         )
     }
 
-    suspend fun authorize(
+    override suspend fun authorize(
         baseUrl: String,
         accessToken: String,
         fallbackUsername: String?,
@@ -68,7 +69,7 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun refreshAccessToken(
+    override suspend fun refreshAccessToken(
         baseUrl: String,
         refreshToken: String,
         fallbackUsername: String?,
@@ -98,7 +99,7 @@ class AudiobookshelfApiClient(
         )
     }
 
-    suspend fun getLibraries(baseUrl: String, accessToken: String): List<LibrarySummary> {
+    override suspend fun getLibraries(baseUrl: String, accessToken: String): List<LibrarySummary> {
         val response = executeAuthorized(
             baseUrl = baseUrl,
             accessToken = accessToken,
@@ -121,7 +122,7 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun getLibraryItems(
+    override suspend fun getLibraryItems(
         baseUrl: String,
         accessToken: String,
         libraryId: String,
@@ -202,7 +203,7 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun getLibraryAuthors(
+    override suspend fun getLibraryAuthors(
         baseUrl: String,
         accessToken: String,
         libraryId: String,
@@ -232,10 +233,11 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun createPlaybackSession(
+    override suspend fun createPlaybackSession(
         baseUrl: String,
         accessToken: String,
         itemId: String,
+        sourceId: String?,
     ): PlaybackSessionSummary {
         val response = httpClient.execute(
             baseUrl = baseUrl,
@@ -309,6 +311,20 @@ class AudiobookshelfApiClient(
         )
     }
 
+    override suspend fun updateProgress(
+        baseUrl: String,
+        accessToken: String,
+        bookId: String,
+        sessionId: String?,
+        sessionUpdate: PlaybackSessionUpdateRequest,
+        close: Boolean,
+    ): String {
+        val id = sessionId ?: createPlaybackSession(baseUrl, accessToken, bookId).sessionId
+            ?: throw IOException("Playback session is missing its ID.")
+        updatePlaybackSession(baseUrl, accessToken, id, sessionUpdate, close)
+        return id
+    }
+
     suspend fun updatePlaybackSession(
         baseUrl: String,
         accessToken: String,
@@ -335,10 +351,10 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun getItemsInProgress(
+    override suspend fun getItemsInProgress(
         baseUrl: String,
         accessToken: String,
-        limit: Int = 25,
+        limit: Int,
     ): List<ProgressItemSummary> {
         val response = executeAuthorized(
             baseUrl = baseUrl,
@@ -362,11 +378,12 @@ class AudiobookshelfApiClient(
         }
     }
 
-    suspend fun getMediaProgress(
+    override suspend fun getMediaProgress(
         baseUrl: String,
         accessToken: String,
         itemId: String,
-        retryProfile: RetryProfile = RetryProfile.BACKGROUND_REFRESH,
+        retryProfile: RetryProfile,
+        sourceId: String?,
     ): MediaProgressSummary {
         val response = executeAuthorized(
             baseUrl = baseUrl,
@@ -684,6 +701,7 @@ data class PlaybackSessionSummary(
     val startTimeMs: Long?,
     val audioTracks: List<PlaybackTrackSummary>,
     val chapters: List<PlaybackChapter> = emptyList(),
+    val sourceId: String? = null,
 )
 
 data class PlaybackTrackSummary(
@@ -694,6 +712,8 @@ data class PlaybackTrackSummary(
     val mimeType: String?,
     val durationMs: Long?,
     val startOffsetMs: Long,
+    val clipStartMs: Long = 0,
+    val clipEndMs: Long? = null,
 )
 
 data class ProgressItemSummary(
@@ -710,6 +730,8 @@ data class MediaProgressSummary(
     val startedAt: Long?,
     val finishedAt: Long?,
     val lastUpdateAt: Long,
+    val sourceId: String? = null,
+    val serverChanged: Boolean = false,
 )
 
 data class PlaybackSessionUpdateRequest(
@@ -717,6 +739,7 @@ data class PlaybackSessionUpdateRequest(
     val durationMs: Long,
     val timeListenedMs: Long,
     val lastUpdateAt: Long,
+    val sourceId: String? = null,
 )
 
 class ApiException(

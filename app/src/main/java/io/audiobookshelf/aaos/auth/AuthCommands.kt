@@ -5,6 +5,7 @@ object AuthCommands {
     const val CMD_LOGIN = "io.shelfdrive.app.command.LOGIN"
     const val CMD_LOGOUT = "io.shelfdrive.app.command.LOGOUT"
 
+    const val EXTRA_SERVER_TYPE = "io.shelfdrive.app.extra.SERVER_TYPE"
     const val EXTRA_SERVER_URL = "io.shelfdrive.app.extra.SERVER_URL"
     const val EXTRA_USERNAME = "io.shelfdrive.app.extra.USERNAME"
     const val EXTRA_PASSWORD = "io.shelfdrive.app.extra.PASSWORD"

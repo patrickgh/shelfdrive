@@ -3,6 +3,7 @@ package io.audiobookshelf.aaos.settings
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.os.Bundle
+import io.audiobookshelf.aaos.server.ServerType
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.text.InputType
@@ -28,6 +29,8 @@ import java.text.DateFormat
 import java.util.Date
 
 class SettingsFragment : PreferenceFragmentCompat() {
+    private var serverTypeInput = ServerType.AUDIOBOOKSHELF
+    private var serverTypeEdited = false
     private var serverUrlInput: String = ""
     private var usernameInput: String = ""
     private var passwordInput: String = ""
@@ -66,6 +69,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
+        outState.putString(KEY_SERVER_TYPE, serverTypeInput.name)
+        outState.putBoolean("server_type_edited", serverTypeEdited)
         outState.putString(STATE_SERVER_URL, serverUrlInput)
         outState.putString(STATE_USERNAME, usernameInput)
     }
@@ -79,6 +84,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     internal fun renderState(newState: SettingsState) {
         state = newState
+        if (!serverTypeEdited || newState.authSnapshot.isAuthenticated) {
+            serverTypeInput = newState.authSnapshot.serverType
+            serverTypeEdited = false
+        }
         if (!newState.authSnapshot.baseUrl.isNullOrBlank()) {
             serverUrlInput = newState.authSnapshot.baseUrl
         }
@@ -102,6 +111,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun restoreDrafts(savedInstanceState: Bundle?) {
+        serverTypeInput = ServerType.fromStored(savedInstanceState?.getString(KEY_SERVER_TYPE))
+        serverTypeEdited = savedInstanceState?.getBoolean("server_type_edited") ?: false
         serverUrlInput = savedInstanceState?.getString(STATE_SERVER_URL).orEmpty()
         usernameInput = savedInstanceState?.getString(STATE_USERNAME).orEmpty()
         passwordInput = ""
@@ -126,6 +137,19 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun configureEditablePreferences() {
+        findPreference<ListPreference>(KEY_SERVER_TYPE)?.apply {
+            entries = ServerType.entries.map { it.label }.toTypedArray()
+            entryValues = ServerType.entries.map { it.name }.toTypedArray()
+            setOnPreferenceChangeListener { _, newValue ->
+                serverTypeInput = ServerType.valueOf(newValue as String)
+                serverTypeEdited = true
+                passwordInput = ""
+                findPreference<EditTextPreference>(KEY_PASSWORD)?.text = ""
+                renderFieldState()
+                renderActionAvailability()
+                true
+            }
+        }
         findPreference<EditTextPreference>(KEY_SERVER_URL)?.apply {
             text = serverUrlInput
             setOnBindEditTextListener { editText ->
@@ -204,7 +228,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private fun configureActions() {
         findPreference<Preference>(KEY_ACCOUNT_ACTION)?.setOnPreferenceClickListener {
             resetDiagnosticsUnlockClicks()
-            if (state.authSnapshot.status == AuthStatus.AUTHENTICATED) {
+            if (state.authSnapshot.isAuthenticated || state.authSnapshot.hasStoredPassword) {
                 (activity as? SettingsActivity)?.performLogout()
             } else {
                 startLogin()
@@ -262,6 +286,12 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun renderFieldState() {
+        findPreference<ListPreference>(KEY_SERVER_TYPE)?.apply {
+            value = serverTypeInput.name
+            summary = if (state.authSnapshot.hasStoredPassword) {
+                getString(R.string.settings_server_type_signed_in, serverTypeInput.label)
+            } else serverTypeInput.label
+        }
         findPreference<Preference>(KEY_SERVER_URL)?.summary =
             serverUrlInput.ifBlank { getString(R.string.settings_not_configured) }
         findPreference<Preference>(KEY_USERNAME)?.summary =
@@ -298,17 +328,21 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun renderActionAvailability() {
+        for (key in listOf(KEY_SERVER_TYPE, KEY_SERVER_URL, KEY_USERNAME)) {
+            findPreference<Preference>(key)?.isEnabled = !state.loginInProgress && !state.authSnapshot.hasStoredPassword
+        }
         findPreference<Preference>(KEY_ACCOUNT_ACTION)?.apply {
-            val isLoggedIn = state.authSnapshot.status == AuthStatus.AUTHENTICATED
+            val isLoggedIn = state.authSnapshot.isAuthenticated || state.authSnapshot.hasStoredPassword
             when {
                 state.loginInProgress -> {
-                    title = getString(R.string.settings_login_in_progress_title)
-                    summary = getString(R.string.settings_login_in_progress_summary)
+                    title = getString(if (isLoggedIn) R.string.settings_logout_title else R.string.settings_login_in_progress_title)
+                    summary = getString(if (isLoggedIn) R.string.settings_logout_in_progress_summary else R.string.settings_login_in_progress_summary)
                     isEnabled = false
                 }
                 isLoggedIn -> {
                     title = getString(R.string.settings_logout_title)
-                    summary = getString(R.string.settings_logout_summary)
+                    summary = state.authSnapshot.statusMessage?.let(::localizeStatusMessage)
+                        ?: getString(R.string.settings_logout_summary)
                     isEnabled = state.commandChannelReady
                 }
                 else -> {
@@ -351,6 +385,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             return
         }
         (activity as? SettingsActivity)?.performLogin(
+            serverType = serverTypeInput,
             serverUrl = serverUrlInput,
             username = usernameInput,
             password = passwordInput,
@@ -462,6 +497,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun localizeStatusMessage(message: String): String {
         return when (message) {
+            UserVisibleStatus.PENDING_PROGRESS_LOGOUT -> getString(R.string.status_pending_progress_logout)
             UserVisibleStatus.SERVER_UNREACHABLE ->
                 getString(R.string.status_server_unreachable)
             UserVisibleStatus.CATALOG_SYNC_FAILED ->
@@ -603,6 +639,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     companion object {
+        private const val KEY_SERVER_TYPE = "server_type"
         private const val KEY_SERVER_URL = "server_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"

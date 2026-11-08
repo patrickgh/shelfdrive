@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MediaProgressEntity::class,
         SyncStateEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class CatalogDatabase : RoomDatabase() {
@@ -32,6 +32,12 @@ abstract class CatalogDatabase : RoomDatabase() {
     abstract fun syncStateDao(): SyncStateDao
 
     companion object {
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE media_progress ADD COLUMN sourceId TEXT")
+            }
+        }
+
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("CREATE TABLE IF NOT EXISTS series (id TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY(id))")
@@ -62,7 +68,7 @@ abstract class CatalogDatabase : RoomDatabase() {
                     CatalogDatabase::class.java,
                     "catalog.db",
                 )
-                    .addMigrations(MIGRATION_4_5)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                     .fallbackToDestructiveMigrationFrom(true, 1, 2, 3)
                     .build()
                     .also { instance = it }

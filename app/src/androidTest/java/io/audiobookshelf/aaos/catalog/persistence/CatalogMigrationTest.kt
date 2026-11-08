@@ -58,4 +58,29 @@ class CatalogMigrationTest {
             close()
         }
     }
+    @Test
+    fun migrate5To6PreservesPendingAudioProgressAndAddsEditionIdentity() {
+        val name = "catalog-readalong-migration-test"
+        helper.createDatabase(name, 5).apply {
+            execSQL("INSERT INTO libraries (id) VALUES ('library')")
+            execSQL("INSERT INTO books (id, libraryId, title, sortTitle, isPlayable) VALUES ('book', 'library', 'Book', 'Book', 1)")
+            execSQL("INSERT INTO media_progress (bookId, currentTimeMs, durationMs, isFinished, hideFromContinueListening, lastUpdateAt, startedAt, finishedAt, pendingUpload) VALUES ('book', 123456, 900000, 0, 0, 1000, 500, NULL, 1)")
+            close()
+        }
+        helper.runMigrationsAndValidate(name, 6, true, CatalogDatabase.MIGRATION_5_6).apply {
+            query("SELECT currentTimeMs, pendingUpload, sourceId FROM media_progress WHERE bookId = 'book'").use {
+                assertTrue(it.moveToFirst())
+                assertEquals(123456L, it.getLong(0))
+                assertEquals(1, it.getInt(1))
+                assertTrue(it.isNull(2))
+            }
+            execSQL("UPDATE media_progress SET sourceId = 'epub:20:revision' WHERE bookId = 'book'")
+            query("SELECT sourceId FROM media_progress").use {
+                assertTrue(it.moveToFirst())
+                assertEquals("epub:20:revision", it.getString(0))
+            }
+            close()
+        }
+    }
+
 }

@@ -1,9 +1,11 @@
 package io.audiobookshelf.aaos.auth
 
 import android.os.Bundle
+import io.audiobookshelf.aaos.server.ServerType
 
 data class AuthSnapshot(
     val status: AuthStatus,
+    val serverType: ServerType = ServerType.AUDIOBOOKSHELF,
     val baseUrl: String? = null,
     val username: String? = null,
     val serverVersion: String? = null,
@@ -16,6 +18,7 @@ data class AuthSnapshot(
     fun toBundle(): Bundle {
         return Bundle().apply {
             putString(KEY_STATUS, status.name)
+            putString(KEY_SERVER_TYPE, serverType.name)
             putString(KEY_BASE_URL, baseUrl)
             putString(KEY_USERNAME, username)
             putString(KEY_SERVER_VERSION, serverVersion)
@@ -25,6 +28,7 @@ data class AuthSnapshot(
     }
 
     companion object {
+        private const val KEY_SERVER_TYPE = "auth_server_type"
         private const val KEY_STATUS = "auth_status"
         private const val KEY_BASE_URL = "auth_base_url"
         private const val KEY_USERNAME = "auth_username"
@@ -38,6 +42,7 @@ data class AuthSnapshot(
             val status = runCatching { AuthStatus.valueOf(statusName) }.getOrNull() ?: return null
             return AuthSnapshot(
                 status = status,
+                serverType = ServerType.fromStored(bundle.getString(KEY_SERVER_TYPE)),
                 baseUrl = bundle.getString(KEY_BASE_URL),
                 username = bundle.getString(KEY_USERNAME),
                 serverVersion = bundle.getString(KEY_SERVER_VERSION),

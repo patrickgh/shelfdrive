@@ -49,10 +49,14 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import io.audiobookshelf.aaos.absapi.ApiException
-import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
+import io.audiobookshelf.aaos.server.ServerApis
+import io.audiobookshelf.aaos.server.ServerType
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
 import io.audiobookshelf.aaos.absapi.ConnectivityMonitor
+import io.audiobookshelf.aaos.auth.AuthSnapshot
+import io.audiobookshelf.aaos.auth.AuthStatus
+import io.audiobookshelf.aaos.status.UserVisibleStatus
 import io.audiobookshelf.aaos.auth.AuthCommands
 import io.audiobookshelf.aaos.auth.AuthRepository
 import io.audiobookshelf.aaos.auth.AuthStorage
@@ -67,7 +71,7 @@ import io.audiobookshelf.aaos.catalog.persistence.MediaProgressEntity
 import io.audiobookshelf.aaos.diagnostics.DiagnosticEventLogger
 import io.audiobookshelf.aaos.diagnostics.PlaybackRestoreStatus
 import io.audiobookshelf.aaos.diagnostics.StartupDiagnosticsStorage
-import io.audiobookshelf.aaos.playback.AudiobookshelfPlaybackRepository
+import io.audiobookshelf.aaos.playback.AudiobookPlaybackRepository
 import io.audiobookshelf.aaos.playback.PlaybackCachePolicy
 import io.audiobookshelf.aaos.playback.PlaybackProgressRange
 import io.audiobookshelf.aaos.playback.playbackProgressRange
@@ -121,7 +125,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private lateinit var authRepository: AuthRepository
     private lateinit var syncRepository: CatalogSyncRepository
     private lateinit var browseRepository: CatalogBrowseRepository
-    private lateinit var playbackRepository: AudiobookshelfPlaybackRepository
+    private lateinit var playbackRepository: AudiobookPlaybackRepository
     private lateinit var playbackStateStorage: PlaybackStateStorage
     private lateinit var progressSyncRepository: ProgressSyncRepository
     private lateinit var cacheRepository: CacheRepository
@@ -167,6 +171,11 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private var lastSyncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE)
     private val subscribedSeriesParents = mutableSetOf<String>()
     private val progressUpdateMutex = Mutex()
+    private var lastExplicitSeekAtMs = 0L
+    private val accountCommandMutex = Mutex()
+    private lateinit var authenticatedRequestRunner: AuthenticatedRequestRunner
+    private var accountGeneration = 0
+    private var changingAccount = false
 
     override fun onCreate() {
         super.onCreate()
@@ -194,9 +203,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         defaultSharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
 
         authStorage = AuthStorage(this)
-        val apiClient = AudiobookshelfApiClient()
-        authRepository = AuthRepository(storage = authStorage, apiClient = apiClient)
-        val authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
+        val serverApis = ServerApis()
+        authRepository = AuthRepository(storage = authStorage, serverApis = serverApis)
+        authenticatedRequestRunner = AuthenticatedRequestRunner(authStorage, authRepository)
         val database = CatalogDatabase.getInstance(this)
         browseRepository = CatalogBrowseRepository(database)
         mediaCatalog = ShelfDriveMediaCatalog(this, browseRepository)
@@ -204,20 +213,20 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         syncRepository = CatalogSyncRepository(
             database = database,
             authenticatedRequestRunner = authenticatedRequestRunner,
-            apiClient = apiClient,
+            serverApis = serverApis,
         )
         progressSyncRepository = ProgressSyncRepository(
             database = database,
             authenticatedRequestRunner = authenticatedRequestRunner,
-            apiClient = apiClient,
+            serverApis = serverApis,
             diagnosticEventLogger = diagnosticEventLogger,
         )
         connectivityMonitor = ConnectivityMonitor(this)
         cacheRepository = CacheRepository(this, database)
-        playbackRepository = AudiobookshelfPlaybackRepository(
+        playbackRepository = AudiobookPlaybackRepository(
             authenticatedRequestRunner = authenticatedRequestRunner,
             database = database,
-            apiClient = apiClient,
+            serverApis = serverApis,
         )
         playbackStateStorage = PlaybackStateStorage(this)
         observeConnectivity()
@@ -279,7 +288,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
         serviceScope.launch {
             runCatching {
-                val initialAuth = authRepository.bootstrap()
+                val initialAuth = authenticatedRequestRunner.withSessionChange { authRepository.bootstrap() }
                 notifyCatalogChanged()
                 updateSyncSnapshot(syncRepository.loadSnapshot())
                 diagnosticEventLogger?.record("auth_bootstrap", mapOf("status" to initialAuth.status.name))
@@ -975,6 +984,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                     Log.i(TAG, "Host requested playback for mediaId=${requestedItem.mediaId}.")
                 }
                 val playback = resolveRequestedPlayback(requestedItem)
+                ensureCurrentAccount(playback)
                 if (BuildConfig.DIAGNOSTICS_ENABLED) {
                     Log.i(TAG, "Resolved playback for book=${playback.playback.bookId} tracks=${playback.playback.queue.size}.")
                 }
@@ -1031,39 +1041,76 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 }
 
                 action == AuthCommands.CMD_GET_AUTH_STATE -> serviceFuture(action) {
-                    val snapshot = authRepository.bootstrap()
+                    val snapshot = authenticatedRequestRunner.withSessionChange { authRepository.bootstrap() }
                     SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
                 }
 
                 action == AuthCommands.CMD_LOGIN -> serviceFuture(action) {
-                    val snapshot = authRepository.login(
-                        requestedBaseUrl = args.getString(AuthCommands.EXTRA_SERVER_URL),
-                        requestedUsername = args.getString(AuthCommands.EXTRA_USERNAME),
-                        requestedPassword = args.getString(AuthCommands.EXTRA_PASSWORD),
-                    )
-                    if (snapshot.isAuthenticated && player.playWhenReady) {
-                        emitProgress(PlaybackProgressReason.STARTED)
-                    }
-                    val result = snapshot.toBundle()
-                    if (snapshot.isAuthenticated) {
-                        val syncSnapshot = syncRepository.syncNow()
-                        if (syncSnapshot.status != SyncStatus.FAILED) {
-                            progressSyncRepository.refreshInProgress()
+                    accountCommandMutex.withLock {
+                        val requestedType = ServerType.fromStored(args.getString(AuthCommands.EXTRA_SERVER_TYPE))
+                        val stored = authStorage.load()
+                        if (stored.baseUrl != null && (stored.serverType != requestedType ||
+                            stored.baseUrl != io.audiobookshelf.aaos.auth.ServerUrlPolicy.validate(args.getString(AuthCommands.EXTRA_SERVER_URL)).normalizedUrl ||
+                            stored.username != args.getString(AuthCommands.EXTRA_USERNAME)?.trim())) {
+                            throw IOException("Log out before changing the server or account.")
                         }
-                        updateSyncSnapshot(syncSnapshot)
-                        result.putAll(syncSnapshot.toBundle())
-                    } else {
-                        notifyCatalogChanged()
+                        val snapshot = authenticatedRequestRunner.withSessionChange {
+                            authRepository.login(
+                                requestedServerType = requestedType,
+                                requestedBaseUrl = args.getString(AuthCommands.EXTRA_SERVER_URL),
+                                requestedUsername = args.getString(AuthCommands.EXTRA_USERNAME),
+                                requestedPassword = args.getString(AuthCommands.EXTRA_PASSWORD),
+                            )
+                        }
+                        if (snapshot.isAuthenticated && player.playWhenReady) emitProgress(PlaybackProgressReason.STARTED)
+                        val result = snapshot.toBundle()
+                        if (snapshot.isAuthenticated) {
+                            val syncSnapshot = syncRepository.syncNow()
+                            if (syncSnapshot.status != SyncStatus.FAILED) progressSyncRepository.refreshInProgress()
+                            updateSyncSnapshot(syncSnapshot)
+                            result.putAll(syncSnapshot.toBundle())
+                        } else notifyCatalogChanged()
+                        SessionResult(SessionResult.RESULT_SUCCESS, result)
                     }
-                    SessionResult(SessionResult.RESULT_SUCCESS, result)
                 }
 
                 action == AuthCommands.CMD_LOGOUT -> serviceFuture(action) {
-                    clearPlayback()
-                    val snapshot = authRepository.logout()
-                    cacheRepository.clearCache()
-                    updateSyncSnapshot(SyncSnapshot(status = SyncStatus.IDLE))
-                    SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
+                    accountCommandMutex.withLock {
+                        player.pause()
+                        emitProgress(PlaybackProgressReason.PAUSED)
+                        progressUpdateMutex.withLock {
+                            if (!progressSyncRepository.flushPending()) {
+                                val stored = authStorage.load()
+                                val snapshot = AuthSnapshot(
+                                    status = if (stored.accessToken == null) AuthStatus.SESSION_EXPIRED else AuthStatus.AUTHENTICATED,
+                                    serverType = stored.serverType,
+                                    baseUrl = stored.baseUrl, username = stored.username,
+                                    hasStoredPassword = !stored.password.isNullOrBlank(),
+                                    statusMessage = UserVisibleStatus.PENDING_PROGRESS_LOGOUT,
+                                )
+                                return@serviceFuture SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
+                            }
+                            authenticatedRequestRunner.withSessionChange {
+                                changingAccount = true
+                                try {
+                                    accountGeneration++
+                                    playbackRecoveryJob?.cancel()
+                                    catalogSyncJob?.cancel()
+                                    val prefetch = cancelForwardCache()
+                                    clearPlayback()
+                                    prefetch?.join()
+                                    activeBookCacheJob?.join()
+                                    httpDataSourceFactory.setDefaultRequestProperties(emptyMap())
+                                    val snapshot = authRepository.logout()
+                                    cacheRepository.clearCache()
+                                    updateSyncSnapshot(SyncSnapshot(status = SyncStatus.IDLE))
+                                    SessionResult(SessionResult.RESULT_SUCCESS, snapshot.toBundle())
+                                } finally {
+                                    changingAccount = false
+                                }
+                            }
+                        }
+                    }
                 }
 
                 action == CacheCommands.CMD_GET_CACHE_STATE -> serviceFuture(action) {
@@ -1288,7 +1335,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 sessionId = localSessionId
                 accessToken = authStorage.load().accessToken?.takeIf { it.isNotBlank() }
             } else {
-                val resolved = playbackRepository.resolveBook(stored.bookId)
+                if (!progressSyncRepository.flushPending(stored.bookId)) throw IOException("Pending listening progress could not be synchronized.")
+                val resolved = playbackRepository.resolveBook(stored.bookId, stored.sourceId)
+                ensureCurrentAccount(resolved)
                 playback = resolved.playback
                 source = if (localPlayback == null) "online_resolution" else "online_resolution_after_restart"
                 baseUrl = resolved.baseUrl
@@ -1307,7 +1356,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             resetTransientPlaybackRetry()
             val startPosition = PlaybackQueueMath.locateStartPosition(
                 playback.queue,
-                stored.positionMs,
+                if (playback.sourceId != null || playback.sourceId != stored.sourceId)
+                    playback.queue[playback.startIndex].startOffsetMs + playback.startPositionMs else stored.positionMs,
             )
             diagnosticsStorage?.recordRestoreFinished(PlaybackRestoreStatus.SUCCESS)
             diagnosticEventLogger?.record(
@@ -1364,6 +1414,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     private suspend fun resolveRequestedPlayback(requestedItem: MediaItem): ResolvedAudiobookPlaybackSession {
         val requestedBookId = (BrowseNodeId.parse(requestedItem.mediaId) as? BrowseNodeId.Book)?.bookId
         if (requestedBookId != null) {
+            if (!progressSyncRepository.flushPending(requestedBookId)) throw IOException("Pending listening progress could not be synchronized.")
             return playbackRepository.resolveBook(requestedBookId)
         }
 
@@ -1375,6 +1426,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             ?: throw PlaybackResolutionException(
                 "Kein Hoerbuch fuer '$searchQuery' gefunden.",
             )
+        if (!progressSyncRepository.flushPending(book.id)) throw IOException("Pending listening progress could not be synchronized.")
         return playbackRepository.resolveBook(book.id)
     }
 
@@ -1434,7 +1486,8 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         speed: Float,
         playWhenReady: Boolean,
     ) {
-        val resolved = playbackRepository.resolveBook(bookId)
+        val sourceId = activeBook?.takeIf { it.bookId == bookId }?.sourceId ?: "audio"
+        val resolved = playbackRepository.resolveBook(bookId, sourceId)
         activateResolvedPlayback(
             resolved = resolved,
             positionMs = positionMs,
@@ -1451,7 +1504,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     ) {
         val startPosition = PlaybackQueueMath.locateStartPosition(resolved.playback.queue, positionMs)
         val hadPlayerError = player.playerError != null
-        val needsQueue = player.mediaItemCount != resolved.playback.queue.size
+        val needsQueue = player.mediaItemCount != resolved.playback.queue.size || activeBook?.queue != resolved.playback.queue
         selectResolvedPlayback(resolved)
         if (needsQueue) {
             setPlaybackQueue(resolved.playback, startPosition)
@@ -1470,7 +1523,16 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         }
     }
 
+    private fun ensureCurrentAccount(resolved: ResolvedAudiobookPlaybackSession) {
+        val stored = authStorage.load()
+        if (changingAccount || stored.serverType != resolved.account.serverType ||
+            stored.baseUrl != resolved.account.baseUrl || stored.username != resolved.account.username) {
+            throw IOException("Playback account changed during resolution.")
+        }
+    }
+
     private fun selectResolvedPlayback(resolved: ResolvedAudiobookPlaybackSession) {
+        ensureCurrentAccount(resolved)
         updateActiveBook(resolved.playback)
         activePlaybackSessionId = resolved.sessionId
         activePlaybackBaseUrl = resolved.baseUrl
@@ -1564,7 +1626,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private fun updateActiveBook(playback: ResolvedAudiobookPlayback?) {
-        val bookChanged = activeBook?.bookId != playback?.bookId
+        val bookChanged = activeBook?.bookId != playback?.bookId || activeBook?.sourceId != playback?.sourceId
         val cancelledCacheJob = if (bookChanged) cancelForwardCache() else null
         activeBook = playback
         updateChapterProgressUpdates()
@@ -1641,11 +1703,22 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (activeBook?.bookId != track.bookId) {
             return dataSpec
         }
-        val sessionId = activePlaybackSessionId ?: return dataSpec
         val baseUrl = activePlaybackBaseUrl ?: return dataSpec
-        return dataSpec.withUri(
-            Uri.parse(playbackSessionTrackUrl(baseUrl, sessionId, track.trackIndex)),
-        )
+        val url = when (authStorage.load().serverType) {
+            ServerType.AUDIOBOOKSHELF -> {
+                val sessionId = activePlaybackSessionId ?: throw IOException("Missing Audiobookshelf playback session.")
+                playbackSessionTrackUrl(baseUrl, sessionId, track.trackIndex)
+            }
+            ServerType.BOOKORBIT -> {
+                val asset = activeBook?.queue?.getOrNull(track.trackIndex)
+                    ?: throw IOException("Missing BookOrbit audio asset.")
+                val path = asset.streamPath ?: "/api/v1/audiobooks/${track.bookId}/assets/${asset.id}/content"
+                if (!path.startsWith("/api/v1/epub/${track.bookId}/media-overlay/file/") &&
+                    !path.startsWith("/api/v1/audiobooks/${track.bookId}/assets/")) throw IOException("Invalid BookOrbit stream path.")
+                "${baseUrl.trimEnd('/')}$path"
+            }
+        }
+        return dataSpec.withUri(Uri.parse(url))
     }
 
     private fun updateChapterProgressUpdates() {
@@ -1817,7 +1890,9 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private fun emitProgress(reason: PlaybackProgressReason) {
+        if (changingAccount) return
         val playback = activeBook ?: return
+        if (reason == PlaybackProgressReason.SEEKED) lastExplicitSeekAtMs = System.currentTimeMillis()
         val timeListenedMs = consumeListeningTimeMs(reason)
         if (reason == PlaybackProgressReason.ENDED || reason == PlaybackProgressReason.STOPPED) {
             playbackStateStorage.clear()
@@ -1832,18 +1907,21 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
             timeListenedMs = timeListenedMs,
             isFinished = reason == PlaybackProgressReason.ENDED,
             reason = reason,
+            sourceId = playback.sourceId,
         )
         if (reason == PlaybackProgressReason.ENDED || reason == PlaybackProgressReason.STOPPED) {
             activePlaybackSessionId = null
             lastProgressSampleElapsedRealtimeMs = null
         }
+        val generation = accountGeneration
         serviceScope.launch {
-            runProgressUpdate(snapshot)
+            runProgressUpdate(snapshot, generation)
         }
     }
 
-    private suspend fun runProgressUpdate(initialSnapshot: PlaybackProgressSnapshot) {
+    private suspend fun runProgressUpdate(initialSnapshot: PlaybackProgressSnapshot, generation: Int = accountGeneration) {
         progressUpdateMutex.withLock {
+            if (generation != accountGeneration || changingAccount) return@withLock
             if (!progressSyncRepository.storePendingProgress(initialSnapshot)) {
                 return@withLock
             }
@@ -1856,13 +1934,17 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 return@withLock
             }
 
-            val serverLookup = progressSyncRepository.loadServerProgress(initialSnapshot.bookId)
+            val serverLookup = progressSyncRepository.loadServerProgress(initialSnapshot.bookId, initialSnapshot.sourceId)
             val currentSnapshot = latestProgressSnapshot(initialSnapshot)
             when (serverLookup) {
                 ServerProgressLookup.Unavailable -> return@withLock
                 ServerProgressLookup.Missing -> uploadProgress(currentSnapshot)
                 is ServerProgressLookup.Found -> {
                     val serverProgress = serverLookup.progress
+                    if (serverLookup.supersedesLocal) {
+                        applyServerProgress(initialSnapshot, serverProgress, serverProgress.currentTimeMs, force = true)
+                        return@withLock
+                    }
                     val decision = ProgressConflictPolicy.decide(currentSnapshot.currentTimeMs, serverProgress)
                     diagnosticEventLogger?.record(
                         "active_progress_checked",
@@ -1887,7 +1969,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
     }
 
     private fun latestProgressSnapshot(initial: PlaybackProgressSnapshot): PlaybackProgressSnapshot {
-        if (activeBook?.bookId != initial.bookId) {
+        if (activeBook?.bookId != initial.bookId || activeBook?.sourceId != initial.sourceId) {
             return initial
         }
         return initial.copy(
@@ -1899,6 +1981,13 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
     private suspend fun uploadProgress(snapshot: PlaybackProgressSnapshot) {
         val result = progressSyncRepository.uploadCheckedProgress(snapshot)
+        result.superseded?.let { server ->
+            if (activeBook?.bookId == snapshot.bookId && activeBook?.sourceId == server.sourceId &&
+                lastExplicitSeekAtMs <= snapshot.lastUpdateAt) {
+                seekToLogicalPosition(server.currentTimeMs)
+                saveActivePlaybackState()
+            }
+        }
         if (
             result.sessionMissing &&
             activeBook?.bookId == snapshot.bookId &&
@@ -1924,8 +2013,10 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         initialSnapshot: PlaybackProgressSnapshot,
         serverProgress: MediaProgressEntity,
         targetPositionMs: Long,
+        force: Boolean = false,
     ) {
-        val playback = activeBook?.takeIf { it.bookId == initialSnapshot.bookId }
+        if (lastExplicitSeekAtMs > initialSnapshot.lastUpdateAt) return
+        val playback = activeBook?.takeIf { it.bookId == initialSnapshot.bookId && it.sourceId == initialSnapshot.sourceId }
         if (playback == null) {
             progressSyncRepository.acceptServerProgress(serverProgress)
             return
@@ -1936,19 +2027,21 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
 
         val latestSnapshot = latestProgressSnapshot(initialSnapshot)
         val latestDecision = ProgressConflictPolicy.decide(latestSnapshot.currentTimeMs, serverProgress)
-        if (latestDecision !is ProgressUpdateDecision.SeekForward) {
+        if (!force && latestDecision !is ProgressUpdateDecision.SeekForward) {
             uploadProgress(latestSnapshot)
             return
         }
         progressSyncRepository.acceptServerProgress(serverProgress)
+        val positionMs = if (force) targetPositionMs else (latestDecision as ProgressUpdateDecision.SeekForward).positionMs
         diagnosticEventLogger?.record(
             "server_progress_seek_applied",
             mapOf(
                 "bookId" to playback.bookId,
-                "positionMs" to latestDecision.positionMs.toString(),
+                "positionMs" to positionMs.toString(),
             ),
         )
-        seekToLogicalPosition(latestDecision.positionMs)
+        seekToLogicalPosition(positionMs)
+        saveActivePlaybackState()
     }
 
     private fun consumeListeningTimeMs(reason: PlaybackProgressReason): Long {
@@ -2036,6 +2129,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
                 positionMs = logicalPlaybackPositionMs(),
                 queue = playback.queue,
                 chapters = playback.chapters,
+                sourceId = playback.sourceId,
                 playbackSpeed = player.playbackParameters.speed,
             ),
         )
@@ -2282,7 +2376,7 @@ class ShelfDriveMediaLibraryService : MediaLibraryService(), Player.Listener {
         if (!player.playWhenReady) {
             return
         }
-        if (activePlaybackSessionId == null) {
+        if (activePlaybackSessionId == null && authStorage.load().serverType == ServerType.AUDIOBOOKSHELF) {
             startPlaybackRecovery(
                 source = "network_return_no_session",
                 bookId = currentBook.bookId,

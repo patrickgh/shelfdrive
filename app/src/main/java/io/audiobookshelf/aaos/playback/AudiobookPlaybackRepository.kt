@@ -1,7 +1,9 @@
 package io.audiobookshelf.aaos.playback
 
 import io.audiobookshelf.aaos.artwork.ArtworkUriFactory
-import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
+import io.audiobookshelf.aaos.server.ServerApis
+import io.audiobookshelf.aaos.server.ServerType
+import io.audiobookshelf.aaos.server.AudiobookServerApi
 import io.audiobookshelf.aaos.absapi.PlaybackTrackSummary
 import io.audiobookshelf.aaos.auth.AuthenticatedRequestRunner
 import io.audiobookshelf.aaos.catalog.persistence.CatalogDatabase
@@ -11,15 +13,18 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
 
-class AudiobookshelfPlaybackRepository(
+class AudiobookPlaybackRepository(
     private val authenticatedRequestRunner: AuthenticatedRequestRunner,
     private val database: CatalogDatabase,
-    private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
+    private val serverApis: ServerApis = ServerApis(),
 ) {
-    suspend fun resolveBook(bookId: String): ResolvedAudiobookPlaybackSession = withContext(Dispatchers.IO) {
+    suspend fun resolveBook(bookId: String, sourceId: String? = null): ResolvedAudiobookPlaybackSession = withContext(Dispatchers.IO) {
         authenticatedRequestRunner.execute { context ->
             resolveBookOnce(
+                apiClient = serverApis.forType(context.serverType),
+                account = context,
                 bookId = bookId,
+                sourceId = sourceId,
                 baseUrl = context.baseUrl,
                 accessToken = context.accessToken,
             )
@@ -27,13 +32,16 @@ class AudiobookshelfPlaybackRepository(
     }
 
     private suspend fun resolveBookOnce(
+        apiClient: AudiobookServerApi,
+        account: io.audiobookshelf.aaos.auth.AuthenticatedRequestContext,
         bookId: String,
+        sourceId: String?,
         baseUrl: String,
         accessToken: String,
     ): ResolvedAudiobookPlaybackSession {
-        val playbackSession = apiClient.createPlaybackSession(baseUrl, accessToken, bookId)
+        val playbackSession = apiClient.createPlaybackSession(baseUrl, accessToken, bookId, sourceId)
         val sessionId = playbackSession.sessionId
-            ?: throw PlaybackResolutionException("Die Playback-Session enthaelt keine ID.")
+
         val catalogBook = database.bookDao().getPlayableById(bookId)
 
         val queue = playbackSession.audioTracks
@@ -53,6 +61,9 @@ class AudiobookshelfPlaybackRepository(
                     mimeType = track.mimeType,
                     durationMs = track.durationMs,
                     startOffsetMs = track.startOffsetMs,
+                    streamPath = track.contentUrl.takeIf { account.serverType == ServerType.BOOKORBIT },
+                    clipStartMs = track.clipStartMs,
+                    clipEndMs = track.clipEndMs,
                 )
             }
 
@@ -82,12 +93,14 @@ class AudiobookshelfPlaybackRepository(
                 durationMs = playbackSession.durationMs ?: queue.sumOfKnownDurations() ?: catalogBook?.durationMs?.takeIf { it > 0L },
                 queue = queue,
                 chapters = playbackSession.chapters,
+                sourceId = playbackSession.sourceId,
                 startIndex = startPosition.trackIndex,
                 startPositionMs = startPosition.positionMs,
             ),
             baseUrl = baseUrl,
             accessToken = accessToken,
             sessionId = sessionId,
+            account = account,
         )
     }
 

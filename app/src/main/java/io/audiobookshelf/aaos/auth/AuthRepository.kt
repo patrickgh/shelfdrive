@@ -2,7 +2,8 @@ package io.audiobookshelf.aaos.auth
 
 import android.util.Log
 import io.audiobookshelf.aaos.absapi.ApiException
-import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
+import io.audiobookshelf.aaos.server.ServerApis
+import io.audiobookshelf.aaos.server.ServerType
 import io.audiobookshelf.aaos.absapi.AuthenticatedSession
 import io.audiobookshelf.aaos.status.UserVisibleStatus
 import kotlinx.coroutines.Dispatchers
@@ -11,7 +12,7 @@ import java.io.IOException
 
 class AuthRepository(
     private val storage: AuthStorage,
-    private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
+    private val serverApis: ServerApis = ServerApis(),
 ) {
 
     suspend fun bootstrap(): AuthSnapshot = withContext(Dispatchers.IO) {
@@ -22,6 +23,7 @@ class AuthRepository(
 
         if (baseUrl.isNullOrBlank() || username.isBlank()) {
             return@withContext AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGGED_OUT,
                 hasStoredPassword = !stored.password.isNullOrBlank(),
             )
@@ -29,9 +31,10 @@ class AuthRepository(
 
         if (!accessToken.isNullOrBlank()) {
             try {
-                val session = apiClient.authorize(baseUrl, accessToken, username)
+                val session = serverApis.forType(stored.serverType).authorize(baseUrl, accessToken, username)
                 if (session != null) {
                     return@withContext buildAuthenticatedSnapshot(
+                        serverType = stored.serverType,
                         baseUrl = baseUrl,
                         username = session.username,
                         session = session,
@@ -54,11 +57,16 @@ class AuthRepository(
     }
 
     suspend fun login(
+        requestedServerType: ServerType,
         requestedBaseUrl: String?,
         requestedUsername: String?,
         requestedPassword: String?,
     ): AuthSnapshot = withContext(Dispatchers.IO) {
-        val stored = storage.load()
+        val previous = storage.load()
+        val sameAccount = previous.serverType == requestedServerType &&
+            ServerUrlPolicy.validate(requestedBaseUrl).normalizedUrl == previous.baseUrl &&
+            requestedUsername?.trim() == previous.username
+        val stored = if (sameAccount) previous else StoredAuthState(serverType = requestedServerType)
         val requestedUrlValidation = ServerUrlPolicy.validate(requestedBaseUrl)
         val storedUrlValidation = ServerUrlPolicy.validate(stored.baseUrl)
         val baseUrl = requestedUrlValidation.normalizedUrl ?: storedUrlValidation.normalizedUrl
@@ -67,6 +75,7 @@ class AuthRepository(
 
         if (requestedUrlValidation.errorCode != null || (storedUrlValidation.errorCode != null && baseUrl == null)) {
             return@withContext AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
@@ -77,6 +86,7 @@ class AuthRepository(
 
         if (baseUrl.isNullOrBlank() || username.isNullOrBlank() || password.isNullOrBlank()) {
             return@withContext AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
@@ -86,9 +96,10 @@ class AuthRepository(
         }
 
         return@withContext try {
-            val session = apiClient.login(baseUrl, username, password)
+            val session = serverApis.forType(stored.serverType).login(baseUrl, username, password)
             if (!session.isSupported) {
                 return@withContext AuthSnapshot(
+                    serverType = stored.serverType,
                     status = AuthStatus.LOGIN_FAILED,
                     baseUrl = baseUrl,
                     username = session.username,
@@ -100,6 +111,7 @@ class AuthRepository(
 
             val accessToken = session.accessToken
                 ?: return@withContext AuthSnapshot(
+                    serverType = stored.serverType,
                     status = AuthStatus.LOGIN_FAILED,
                     baseUrl = baseUrl,
                     username = session.username,
@@ -110,6 +122,7 @@ class AuthRepository(
 
             storage.save(
                 StoredAuthState(
+                    serverType = stored.serverType,
                     baseUrl = baseUrl,
                     username = session.username,
                     password = password,
@@ -119,6 +132,7 @@ class AuthRepository(
             )
 
             buildAuthenticatedSnapshot(
+                serverType = stored.serverType,
                 baseUrl = baseUrl,
                 username = session.username,
                 session = session,
@@ -127,6 +141,7 @@ class AuthRepository(
         } catch (exception: ApiException) {
             Log.w(TAG, "Login failed with API error ${exception.statusCode}.", exception)
             AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
@@ -136,6 +151,7 @@ class AuthRepository(
         } catch (exception: IOException) {
             Log.w(TAG, "Login failed due to IO error.", exception)
             AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGIN_FAILED,
                 baseUrl = baseUrl,
                 username = username,
@@ -146,8 +162,10 @@ class AuthRepository(
     }
 
     suspend fun logout(): AuthSnapshot = withContext(Dispatchers.IO) {
+        val type = storage.load().serverType
         storage.clear()
-        AuthSnapshot(status = AuthStatus.LOGGED_OUT)
+        storage.save(StoredAuthState(serverType = type))
+        AuthSnapshot(status = AuthStatus.LOGGED_OUT, serverType = type)
     }
 
     suspend fun recoverAfterUnauthorized(): AuthSnapshot = withContext(Dispatchers.IO) {
@@ -156,6 +174,7 @@ class AuthRepository(
         val username = stored.username?.trim().orEmpty()
         if (baseUrl.isNullOrBlank() || username.isBlank()) {
             return@withContext AuthSnapshot(
+                serverType = stored.serverType,
                 status = AuthStatus.LOGGED_OUT,
                 hasStoredPassword = !stored.password.isNullOrBlank(),
             )
@@ -174,7 +193,7 @@ class AuthRepository(
             recoveredSessionSnapshot(
                 stored = stored,
                 baseUrl = baseUrl,
-                session = apiClient.refreshAccessToken(baseUrl, refreshToken, username),
+                session = serverApis.forType(stored.serverType).refreshAccessToken(baseUrl, refreshToken, username),
                 password = stored.password,
                 fallbackRefreshToken = refreshToken,
             )
@@ -205,7 +224,7 @@ class AuthRepository(
             recoveredSessionSnapshot(
                 stored = stored,
                 baseUrl = baseUrl,
-                session = apiClient.login(baseUrl, username, password),
+                session = serverApis.forType(stored.serverType).login(baseUrl, username, password),
                 password = password,
                 fallbackRefreshToken = stored.refreshToken,
             )
@@ -247,6 +266,7 @@ class AuthRepository(
             )
         storage.save(
             StoredAuthState(
+                serverType = stored.serverType,
                 baseUrl = baseUrl,
                 username = session.username,
                 password = password,
@@ -255,9 +275,10 @@ class AuthRepository(
             ),
         )
         return buildAuthenticatedSnapshot(
-            baseUrl,
-            session.username,
-            session,
+            serverType = stored.serverType,
+            baseUrl = baseUrl,
+            username = session.username,
+            session = session,
             hasStoredPassword = !password.isNullOrBlank(),
         )
     }
@@ -271,6 +292,7 @@ class AuthRepository(
     ): AuthSnapshot {
         storage.save(stored.copy(baseUrl = baseUrl, username = username, accessToken = null, refreshToken = null))
         return AuthSnapshot(
+            serverType = stored.serverType,
             status = AuthStatus.SESSION_EXPIRED,
             baseUrl = baseUrl,
             username = username,
@@ -282,6 +304,7 @@ class AuthRepository(
 
     private fun offlineSnapshot(stored: StoredAuthState, baseUrl: String, username: String): AuthSnapshot {
         return AuthSnapshot(
+            serverType = stored.serverType,
             status = AuthStatus.AUTHENTICATED,
             baseUrl = baseUrl,
             username = username,
@@ -291,12 +314,14 @@ class AuthRepository(
     }
 
     private fun buildAuthenticatedSnapshot(
+        serverType: ServerType,
         baseUrl: String,
         username: String,
         session: AuthenticatedSession?,
         hasStoredPassword: Boolean,
     ): AuthSnapshot {
         return AuthSnapshot(
+            serverType = serverType,
             status = AuthStatus.AUTHENTICATED,
             baseUrl = baseUrl,
             username = username,

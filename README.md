@@ -5,7 +5,7 @@
 <h1 align="center">ShelfDrive</h1>
 
 <p align="center">
-  An Android Automotive OS media app for Audiobookshelf.
+  An Android Automotive OS media app for Audiobookshelf and BookOrbit.
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@
 </p>
 
 ShelfDrive connects an Android Automotive OS vehicle to a self-hosted
-[Audiobookshelf](https://www.audiobookshelf.org/) server. It exposes your
+[Audiobookshelf](https://www.audiobookshelf.org/) or [BookOrbit](https://bookorbit.app/) server. It exposes your
 audiobook library through the native AAOS media experience instead of shipping
 a custom player UI.
 
@@ -29,7 +29,7 @@ The app is built as a Media3 library/session source: browsing, search, now
 playing, transport controls, artwork, queue handling, and voice/media actions
 are provided through Android media APIs and rendered by the vehicle media host.
 
-ShelfDrive is an independent project and is not affiliated with Audiobookshelf.
+ShelfDrive is an independent project and is not affiliated with Audiobookshelf or BookOrbit.
 
 > [!NOTE]
 > AI Disclaimer:
@@ -59,7 +59,7 @@ custom driver-facing playback UI where the platform already provides one.
 
 ## Features
 
-- Browse Audiobookshelf book libraries as one combined catalog.
+- Browse audiobook libraries as one combined catalog.
 - Open sections for recently listened books, all audiobooks, authors, and series.
 - Browse series alphabetically and open their audiobooks in volume order, including books belonging to multiple series.
 - Display server-provided audiobook covers and author images.
@@ -68,8 +68,8 @@ custom driver-facing playback UI where the platform already provides one.
 - Use native AAOS now-playing, skip, seek, speed, and media controls.
 - Configure the skip interval to 5, 10, 15, 30, or 60 seconds for both the screen controls and steering wheel next/previous buttons.
 - Cycle playback speed from the now-playing controls through AAOS-supported values.
-- Reconcile playback progress with Audiobookshelf asynchronously while playback is active.
-- Keep Audiobookshelf as the source of truth for listening progress.
+- Reconcile playback progress with the selected server asynchronously while playback is active.
+- Keep the selected server as the source of truth for listening progress.
 - Restore the last local playback state after app or vehicle restarts, including immediate playback from cached audio while the server is unavailable.
 - Optionally rewind 15 seconds when pausing, so resume starts with a short recap.
 - Configure server credentials and playback preferences, inspect connection and sync state, and manage the cache from Settings.
@@ -82,15 +82,15 @@ custom driver-facing playback UI where the platform already provides one.
 - A phone/tablet UI.
 - A custom in-app player screen.
 - Built-in VPN, WireGuard, reverse proxy, or tunnel management.
-- Local listening history that diverges from Audiobookshelf.
+- Local listening history that diverges from the selected server.
 
 ## Requirements
 
 To use the app:
 
 - An Android Automotive OS vehicle or emulator with a compatible media host.
-- An Audiobookshelf server reachable from the vehicle for sign-in, catalog sync, and new or uncached playback.
-- At least one Audiobookshelf library with media type `books`.
+- An Audiobookshelf or BookOrbit 3.7 server reachable from the vehicle for sign-in, catalog sync, and new or uncached playback.
+- At least one book library containing audio files; podcasts and ebook-only titles are excluded.
 - Audiobook files playable by ExoPlayer, such as MP3 or M4B.
 
 For local development:
@@ -108,9 +108,28 @@ emulator. Desktop hostnames often do not resolve in AAOS images; use a LAN IP or
 1. Install ShelfDrive on the AAOS device or emulator.
 2. Open ShelfDrive from the vehicle launcher or media app list.
 3. Open Settings from the media host settings affordance.
-4. Enter the Audiobookshelf server URL, username, and password.
+4. Select the server type (Audiobookshelf or BookOrbit), then enter its base URL, username, and password.
 5. Log in and run a catalog sync.
 6. Return to the media view and browse recently listened books, audiobooks, or authors.
+
+BookOrbit support targets version 3.7 and uses native username/password authentication.
+Choose the base URL without `/api/v1`. Audiobook files and EPUBs with embedded narration
+(Read-Aloud / Read-Along) are included. A narrated EPUB takes priority over separate audio
+files within the same BookOrbit book. Plain text EPUBs and podcasts are excluded.
+
+Read-Aloud playback uses BookOrbit's media-overlay timeline and saves the exact audio
+position and sentence marker through its reading-progress API. BookOrbit maps that marker
+to the reading position used by its other clients; the server's device-sync settings still
+apply. A newer server position rejected by the save endpoint is adopted instead of overwritten.
+Audio clips need valid durations. Missing or contradictory timelines are reported as errors.
+The selected EPUB edition is retained for recovery and pending uploads; progress is never
+silently transferred to a different audio edition when the EPUB changes or disappears.
+
+Existing installations keep Audiobookshelf selected. To change servers or accounts,
+log out first. ShelfDrive pauses playback and synchronizes pending listening progress
+before clearing that account's local catalog, artwork, audio cache, and saved playback.
+If progress cannot be synchronized, logout is refused with a visible message; reconnect
+and retry. Selecting another server does not migrate books or listening progress between servers.
 
 ShelfDrive prioritizes a fast local resume. When a previous playback item exists,
 the app restores its saved queue, position, and AAOS metadata immediately. If the
@@ -119,12 +138,12 @@ network. Session refresh and progress reconciliation run asynchronously and do
 not block this local start.
 
 Signing in, synchronizing the catalog, and starting new or uncached content still
-require a reachable Audiobookshelf server. During an outage, playback can continue
+require a reachable server. During an outage, playback can continue
 for the portions of the current audiobook that are already cached.
 
 ## Playback And Progress
 
-For new playback, ShelfDrive resolves the audiobook through the Audiobookshelf
+For new playback, ShelfDrive resolves the audiobook through the selected server
 API and builds an ExoPlayer queue from the returned audio tracks. The resulting
 playback manifest and position are stored locally for subsequent fast resumes.
 
@@ -137,13 +156,18 @@ Progress behavior:
 - Finished books are hidden from the local continue-listening cache.
 - If the network is unavailable, the current position remains stored locally. Reconciliation resumes when connectivity returns, without delaying playback.
 
+For BookOrbit Read-Aloud EPUBs, a newly observed change from another reader is
+adopted even when it moves backwards. The reading-progress endpoint also guards
+against a concurrent change between checking and saving. A deliberate seek made
+while a check is in flight is kept for the next update.
+
 The optional 15-second pause rewind changes the actual player position before
 the pause progress is synced. Pressing play again resumes from the rewound
 position.
 
 In Settings → Playback → Progress display, choose **Book** (the default) or
 **Chapter**. The selection takes effect immediately and is saved across restarts.
-Chapter mode shows the elapsed time and duration of the current Audiobookshelf
+Chapter mode shows the elapsed time and duration of the current server-provided
 chapter; seeking on the progress bar stays within that chapter. Time-skip buttons
 still move across chapter boundaries, and progress synchronization always uses
 the position within the whole book. Chapters are independent of audio files.
@@ -162,7 +186,7 @@ The Settings screen is intentionally focused and vehicle-friendly:
 - Authentication state.
 - Synced catalog counts.
 - Manual catalog resync.
-- Server URL, username, and password.
+- Server type, URL, username, and password.
 - Login/logout action.
 - Configurable skip interval.
 - Book or chapter progress display.
@@ -190,7 +214,7 @@ the resulting capacity estimate are recorded before the cache size is reconsider
 The caches support local browsing, media host presentation, immediate resumes,
 and playback through temporary network outages for audio that has already been
 cached. They are not offline downloads: uncached audio and new playback still
-require the Audiobookshelf server. The server remains the authority for catalog,
+require the selected server. The server remains the authority for catalog,
 stream authorization, and progress data.
 
 All caches can be cleared from Settings. Android may clear artwork from its
@@ -201,8 +225,8 @@ own size through LRU eviction. App uninstall removes all local app data.
 
 - Credentials and tokens are stored with AndroidX Security encrypted preferences.
 - Android backup is disabled for ShelfDrive app data.
-- The app communicates only with the Audiobookshelf server URL configured by the user.
-- Cleartext HTTP is allowed for local/private Audiobookshelf servers, but HTTPS is recommended for remote access.
+- The app communicates only with the selected server URL configured by the user.
+- Cleartext HTTP is allowed for local/private audiobook servers, but HTTPS is recommended for remote access.
 - No analytics, ads, or tracking SDKs are included.
 
 For more detail, see the [Privacy Policy](docs/PRIVACY_POLICY.md).
@@ -238,6 +262,17 @@ Run unit tests:
 
 ```bash
 ./gradlew testProdDebugUnitTest
+```
+
+The `BookOrbitReadAlongLiveTest` instrumentation test is opt-in. It uses the
+emulator's existing BookOrbit login, checks the test catalog's author portraits,
+loads a narrated EPUB audio stream, and repeatedly saves its current listening
+position unchanged with a deliberately lagging device timestamp. The test account
+needs a narrated EPUB and portraits for its audiobook authors. With the matching
+app and test APKs installed, run it explicitly:
+
+```bash
+adb shell am instrument -w -e class io.audiobookshelf.aaos.bookorbit.BookOrbitReadAlongLiveTest -e bookorbitLive true io.shelfdrive.app.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 Run lint:
@@ -279,6 +314,8 @@ For Android Automotive OS internal testing, see
 
 ```text
 app/src/main/java/io/audiobookshelf/aaos/absapi      Audiobookshelf API client
+app/src/main/java/io/audiobookshelf/aaos/bookorbit   BookOrbit API client
+app/src/main/java/io/audiobookshelf/aaos/server      Shared server API and server-type selection
 app/src/main/java/io/audiobookshelf/aaos/artwork     Artwork content provider
 app/src/main/java/io/audiobookshelf/aaos/auth        Authentication and encrypted storage
 app/src/main/java/io/audiobookshelf/aaos/browser     Browse node IDs and catalog repository

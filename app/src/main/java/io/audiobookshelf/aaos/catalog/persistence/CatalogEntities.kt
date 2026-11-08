@@ -132,6 +132,7 @@ data class MediaProgressEntity(
     val startedAt: Long?,
     val finishedAt: Long?,
     val pendingUpload: Boolean = false,
+    val sourceId: String? = null,
 )
 
 @Entity(tableName = "sync_state")

@@ -3,7 +3,8 @@ package io.audiobookshelf.aaos.progress
 import android.util.Log
 import androidx.room.withTransaction
 import io.audiobookshelf.aaos.absapi.ApiException
-import io.audiobookshelf.aaos.absapi.AudiobookshelfApiClient
+import io.audiobookshelf.aaos.server.ServerApis
+import io.audiobookshelf.aaos.server.ServerProgressSupersededException
 import io.audiobookshelf.aaos.absapi.MediaProgressSummary
 import io.audiobookshelf.aaos.absapi.PlaybackSessionUpdateRequest
 import io.audiobookshelf.aaos.absapi.RetryProfile
@@ -20,9 +21,31 @@ import java.io.IOException
 class ProgressSyncRepository(
     private val database: CatalogDatabase,
     private val authenticatedRequestRunner: AuthenticatedRequestRunner,
-    private val apiClient: AudiobookshelfApiClient = AudiobookshelfApiClient(),
+    private val serverApis: ServerApis = ServerApis(),
     private val diagnosticEventLogger: DiagnosticEventLogger? = null,
 ) {
+    suspend fun flushPending(bookId: String? = null): Boolean {
+        for (pending in database.mediaProgressDao().getPending().filter { bookId == null || it.bookId == bookId }) {
+            when (val server = loadServerProgress(pending.bookId, pending.sourceId)) {
+                ServerProgressLookup.Unavailable -> return false
+                is ServerProgressLookup.Found -> {
+                    if (server.supersedesLocal || ProgressConflictPolicy.decide(pending.currentTimeMs, server.progress) is ProgressUpdateDecision.SeekForward) {
+                        acceptServerProgress(server.progress)
+                        continue
+                    }
+                }
+                ServerProgressLookup.Missing -> Unit
+            }
+            val result = uploadCheckedProgress(PlaybackProgressSnapshot(
+                bookId = pending.bookId, playbackSessionId = null, currentTimeMs = pending.currentTimeMs,
+                durationMs = pending.durationMs, timeListenedMs = 0, isFinished = pending.isFinished,
+                reason = PlaybackProgressReason.STOPPED, lastUpdateAt = pending.lastUpdateAt, sourceId = pending.sourceId,
+            ))
+            if (!result.uploaded && result.superseded == null) return false
+        }
+        return database.mediaProgressDao().getPending().none { bookId == null || it.bookId == bookId }
+    }
+
     suspend fun refreshInProgress(): Boolean = withContext(Dispatchers.IO) {
         try {
             authenticatedRequestRunner.execute { context ->
@@ -44,18 +67,18 @@ class ProgressSyncRepository(
         true
     }
 
-    internal suspend fun loadServerProgress(bookId: String): ServerProgressLookup = withContext(Dispatchers.IO) {
+    internal suspend fun loadServerProgress(bookId: String, sourceId: String? = null): ServerProgressLookup = withContext(Dispatchers.IO) {
         try {
             authenticatedRequestRunner.execute { context ->
                 try {
-                    ServerProgressLookup.Found(
-                        apiClient.getMediaProgress(
-                            baseUrl = context.baseUrl,
-                            accessToken = context.accessToken,
-                            itemId = bookId,
-                            retryProfile = RetryProfile.NONE,
-                        ).toEntity(),
+                    val server = serverApis.forType(context.serverType).getMediaProgress(
+                        baseUrl = context.baseUrl,
+                        accessToken = context.accessToken,
+                        itemId = bookId,
+                        retryProfile = RetryProfile.NONE,
+                        sourceId = sourceId ?: "audio",
                     )
+                    ServerProgressLookup.Found(server.toEntity(), server.serverChanged)
                 } catch (exception: ApiException) {
                     if (exception.statusCode == 404) {
                         ServerProgressLookup.Missing
@@ -84,20 +107,32 @@ class ProgressSyncRepository(
 
             try {
                 val result = authenticatedRequestRunner.execute { context ->
-                    val sessionId = snapshot.playbackSessionId
-                        ?: apiClient.createPlaybackSession(context.baseUrl, context.accessToken, snapshot.bookId).sessionId
-                    if (sessionId.isNullOrBlank()) {
-                        diagnosticEventLogger?.record(
-                            "playback_session_sync_skipped",
-                            mapOf("reason" to "missing_session_id", "bookId" to snapshot.bookId),
-                        )
-                        return@execute ProgressUploadResult(uploaded = false, sessionId = null)
-                    }
-                    val uploadSnapshot = snapshot.copy(playbackSessionId = sessionId)
-                    ProgressUploadResult(
-                        uploaded = syncPlaybackSession(uploadSnapshot, context),
-                        sessionId = sessionId,
+                    val duration = snapshot.durationMs?.takeIf { it > 0L }
+                        ?: return@execute ProgressUploadResult(false, snapshot.playbackSessionId)
+                    diagnosticEventLogger?.record(
+                        "playback_session_sync_started",
+                        mapOf(
+                            "serverType" to context.serverType.name,
+                            "bookId" to snapshot.bookId,
+                            "sessionId" to snapshot.playbackSessionId,
+                            "currentTimeMs" to snapshot.currentTimeMs.toString(),
+                            "durationMs" to duration.toString(),
+                            "timeListenedMs" to snapshot.timeListenedMs.toString(),
+                            "reason" to snapshot.reason.name,
+                            "isFinished" to snapshot.isFinished.toString(),
+                        ),
                     )
+                    val sessionId = serverApis.forType(context.serverType).updateProgress(
+                        baseUrl = context.baseUrl,
+                        accessToken = context.accessToken,
+                        bookId = snapshot.bookId,
+                        sessionId = snapshot.playbackSessionId,
+                        sessionUpdate = PlaybackSessionUpdateRequest(
+                            snapshot.currentTimeMs, duration, snapshot.timeListenedMs, snapshot.lastUpdateAt, snapshot.sourceId,
+                        ),
+                        close = snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED,
+                    )
+                    ProgressUploadResult(uploaded = true, sessionId = sessionId)
                 }
                 if (result.uploaded) {
                     markUploadedIfCurrent(localProgress)
@@ -105,6 +140,10 @@ class ProgressSyncRepository(
                     recordQueuedProgress(snapshot.bookId, "missing_session_or_duration")
                 }
                 result
+            } catch (exception: ServerProgressSupersededException) {
+                val server = exception.progress.toEntity()
+                if (isCurrentLocalVersion(localProgress)) acceptServerProgress(server)
+                ProgressUploadResult(uploaded = false, snapshot.playbackSessionId, superseded = server)
             } catch (_: AuthenticationRequiredException) {
                 recordQueuedProgress(snapshot.bookId, "authentication_required")
                 ProgressUploadResult(uploaded = false, snapshot.playbackSessionId)
@@ -152,11 +191,11 @@ class ProgressSyncRepository(
     }
 
     private suspend fun refreshInProgressOnce(context: AuthenticatedRequestContext) {
-        val items = apiClient.getItemsInProgress(context.baseUrl, context.accessToken)
+        val items = serverApis.forType(context.serverType).getItemsInProgress(context.baseUrl, context.accessToken)
         val progressEntries = mutableListOf<MediaProgressEntity>()
         items.forEach { item ->
             val progress = runCatching {
-                apiClient.getMediaProgress(context.baseUrl, context.accessToken, item.bookId)
+                serverApis.forType(context.serverType).getMediaProgress(context.baseUrl, context.accessToken, item.bookId)
             }.getOrElse { exception ->
                 Log.w(TAG, "Skipping progress refresh.", exception)
                 null
@@ -174,7 +213,8 @@ class ProgressSyncRepository(
                 val local = database.mediaProgressDao().getByBookId(server.bookId)
                 local == null ||
                     !local.pendingUpload ||
-                    ProgressConflictPolicy.decide(local.currentTimeMs, server) is ProgressUpdateDecision.SeekForward
+                    (local.sourceId == server.sourceId &&
+                        ProgressConflictPolicy.decide(local.currentTimeMs, server) is ProgressUpdateDecision.SeekForward)
             }
             if (merged.isNotEmpty()) {
                 database.mediaProgressDao().upsertAll(merged)
@@ -184,6 +224,10 @@ class ProgressSyncRepository(
 
     private suspend fun saveLocalProgress(snapshot: PlaybackProgressSnapshot): MediaProgressEntity? {
         val existing = database.mediaProgressDao().getByBookId(snapshot.bookId)
+        if (existing?.pendingUpload == true && existing.sourceId != snapshot.sourceId) {
+            Log.w(TAG, "Cannot replace pending progress from a different edition.")
+            return null
+        }
         val catalogBook = database.bookDao().getPlayableById(snapshot.bookId)
         if (catalogBook == null) {
             Log.w(TAG, "Skipping local progress cache for unknown book.")
@@ -203,41 +247,8 @@ class ProgressSyncRepository(
             startedAt = existing?.startedAt ?: now,
             finishedAt = if (snapshot.isFinished) now else null,
             pendingUpload = false,
+            sourceId = snapshot.sourceId,
         )
-    }
-
-    private suspend fun syncPlaybackSession(
-        snapshot: PlaybackProgressSnapshot,
-        context: AuthenticatedRequestContext,
-    ): Boolean {
-        val sessionId = snapshot.playbackSessionId ?: return false
-        val durationMs = snapshot.durationMs?.takeIf { it > 0L } ?: return false
-        diagnosticEventLogger?.record(
-            "playback_session_sync_started",
-            mapOf(
-                "bookId" to snapshot.bookId,
-                "sessionId" to sessionId,
-                "currentTimeMs" to snapshot.currentTimeMs.toString(),
-                "durationMs" to durationMs.toString(),
-                "timeListenedMs" to snapshot.timeListenedMs.toString(),
-                "reason" to snapshot.reason.name,
-                "isFinished" to snapshot.isFinished.toString(),
-            ),
-        )
-        val sessionUpdate = PlaybackSessionUpdateRequest(
-            currentTimeMs = snapshot.currentTimeMs,
-            durationMs = durationMs,
-            timeListenedMs = snapshot.timeListenedMs,
-            lastUpdateAt = snapshot.lastUpdateAt,
-        )
-        apiClient.updatePlaybackSession(
-            baseUrl = context.baseUrl,
-            accessToken = context.accessToken,
-            sessionId = sessionId,
-            sessionUpdate = sessionUpdate,
-            close = snapshot.isFinished || snapshot.reason == PlaybackProgressReason.STOPPED,
-        )
-        return true
     }
 
     private suspend fun List<MediaProgressEntity>.onlyForKnownBooks(): List<MediaProgressEntity> {
@@ -262,6 +273,7 @@ class ProgressSyncRepository(
             startedAt = startedAt,
             finishedAt = finishedAt,
             pendingUpload = false,
+            sourceId = sourceId,
         )
     }
 
@@ -285,7 +297,7 @@ class ProgressSyncRepository(
         val current = database.mediaProgressDao().getByBookId(progress.bookId) ?: return false
         return current.lastUpdateAt == progress.lastUpdateAt &&
             current.currentTimeMs == progress.currentTimeMs &&
-            current.isFinished == progress.isFinished
+            current.isFinished == progress.isFinished && current.sourceId == progress.sourceId
     }
 
     companion object {
@@ -294,7 +306,7 @@ class ProgressSyncRepository(
 }
 
 internal sealed interface ServerProgressLookup {
-    data class Found(val progress: MediaProgressEntity) : ServerProgressLookup
+    data class Found(val progress: MediaProgressEntity, val supersedesLocal: Boolean = false) : ServerProgressLookup
     data object Missing : ServerProgressLookup
     data object Unavailable : ServerProgressLookup
 }
@@ -303,4 +315,5 @@ internal data class ProgressUploadResult(
     val uploaded: Boolean,
     val sessionId: String?,
     val sessionMissing: Boolean = false,
+    val superseded: MediaProgressEntity? = null,
 )

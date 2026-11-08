@@ -18,6 +18,10 @@ internal fun ResolvedAudiobookPlayback.toMedia3PlaybackItems(): List<MediaItem> 
             .setMediaId(BrowseNodeId.Book(bookId).serialize())
             .setUri(track.contentUrl)
             .setMimeType(track.mimeType)
+            .setClippingConfiguration(MediaItem.ClippingConfiguration.Builder()
+                .setStartPositionMs(track.clipStartMs)
+                .apply { track.clipEndMs?.let(::setEndPositionMs) }
+                .build())
             .setCustomCacheKey(PlaybackAudioCache.stableCacheKey(bookId, track.id))
             .setMediaMetadata(playbackMetadata(title, author, title, artworkUri, durationMs ?: track.durationMs))
             .build()

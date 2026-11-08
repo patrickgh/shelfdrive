@@ -2,6 +2,7 @@
 package io.audiobookshelf.aaos.auth
 
 import android.content.Context
+import io.audiobookshelf.aaos.server.ServerType
 import androidx.core.content.edit
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -19,6 +20,7 @@ class AuthStorage(context: Context) {
 
     fun load(): StoredAuthState {
         return StoredAuthState(
+            serverType = ServerType.fromStored(sharedPreferences.getString(KEY_SERVER_TYPE, null)),
             baseUrl = sharedPreferences.getString(KEY_BASE_URL, null),
             username = sharedPreferences.getString(KEY_USERNAME, null),
             password = sharedPreferences.getString(KEY_PASSWORD, null),
@@ -29,6 +31,7 @@ class AuthStorage(context: Context) {
 
     fun save(state: StoredAuthState) {
         sharedPreferences.edit {
+            putString(KEY_SERVER_TYPE, state.serverType.name)
             putString(KEY_BASE_URL, state.baseUrl)
             putString(KEY_USERNAME, state.username)
             putString(KEY_PASSWORD, state.password)
@@ -43,6 +46,7 @@ class AuthStorage(context: Context) {
 
     companion object {
         private const val FILE_NAME = "auth_store"
+        private const val KEY_SERVER_TYPE = "server_type"
         private const val KEY_BASE_URL = "base_url"
         private const val KEY_USERNAME = "username"
         private const val KEY_PASSWORD = "password"
@@ -52,6 +56,7 @@ class AuthStorage(context: Context) {
 }
 
 data class StoredAuthState(
+    val serverType: ServerType = ServerType.AUDIOBOOKSHELF,
     val baseUrl: String? = null,
     val username: String? = null,
     val password: String? = null,

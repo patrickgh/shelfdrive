@@ -8,7 +8,10 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.absapi.NetworkPolicy
+import io.audiobookshelf.aaos.auth.StoredAuthState
+import java.security.MessageDigest
 import io.audiobookshelf.aaos.auth.AuthStorage
+import io.audiobookshelf.aaos.server.ServerType
 import java.io.File
 import java.io.FileNotFoundException
 import java.net.HttpURLConnection
@@ -36,9 +39,13 @@ class ArtworkContentProvider : ContentProvider() {
             ?: throw FileNotFoundException("Ungueltige Artwork-ID in URI.")
         val signature = uri.getQueryParameter("sig").orEmpty().takeIf { SAFE_SIGNATURE_REGEX.matches(it) }
             ?: throw FileNotFoundException("Ungueltige Artwork-Signatur.")
-        val cacheFile = cacheFileFor(ctx.cacheDir, match, id, signature)
+        val stored = authStorage.load()
+        val scope = MessageDigest.getInstance("SHA-256")
+            .digest("${stored.serverType}:${stored.baseUrl}:${stored.username}".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+        val cacheFile = cacheFileFor(ctx.cacheDir, scope, match, id, signature)
         if (!cacheFile.exists()) {
-            fetchIntoCache(match, id, cacheFile)
+            fetchIntoCache(stored, match, id, cacheFile)
         }
         if (!cacheFile.exists()) {
             throw FileNotFoundException("Artwork konnte nicht geladen werden: $uri")
@@ -47,7 +54,7 @@ class ArtworkContentProvider : ContentProvider() {
     }
 
     override fun getType(uri: Uri): String {
-        return "image/webp"
+        return if (authStorage.load().serverType == ServerType.BOOKORBIT) "image/jpeg" else "image/webp"
     }
 
     override fun query(
@@ -69,16 +76,21 @@ class ArtworkContentProvider : ContentProvider() {
         selectionArgs: Array<out String>?,
     ): Int = 0
 
-    private fun fetchIntoCache(match: Int, id: String, targetFile: File) {
-        val stored = authStorage.load()
+    private fun fetchIntoCache(stored: StoredAuthState, match: Int, id: String, targetFile: File) {
         val baseUrl = stored.baseUrl?.trim()?.removeSuffix("/")
             ?: throw FileNotFoundException("Keine Server-URL gespeichert.")
         val accessToken = stored.accessToken
             ?: throw FileNotFoundException("Keine aktive Sitzung fuer Artwork verfuegbar.")
 
         val path = when (match) {
-            BOOK_COVER -> "/api/items/$id/cover?width=400&format=webp"
-            AUTHOR_IMAGE -> "/api/authors/$id/image?width=400&format=webp"
+            BOOK_COVER -> when (stored.serverType) {
+                ServerType.AUDIOBOOKSHELF -> "/api/items/$id/cover?width=400&format=webp"
+                ServerType.BOOKORBIT -> "/api/v1/books/$id/thumbnail?medium=audio"
+            }
+            AUTHOR_IMAGE -> when (stored.serverType) {
+                ServerType.AUDIOBOOKSHELF -> "/api/authors/$id/image?width=400&format=webp"
+                ServerType.BOOKORBIT -> "/api/v1/authors/$id/thumbnail"
+            }
             else -> throw FileNotFoundException("Unbekannter Artwork-Typ.")
         }
 
@@ -108,13 +120,13 @@ class ArtworkContentProvider : ContentProvider() {
         }
     }
 
-    private fun cacheFileFor(cacheRoot: File, match: Int, id: String, signature: String): File {
+    private fun cacheFileFor(cacheRoot: File, scope: String, match: Int, id: String, signature: String): File {
         val typePrefix = when (match) {
             BOOK_COVER -> "book"
             AUTHOR_IMAGE -> "author"
             else -> "unknown"
         }
-        return File(cacheRoot, "artwork/$typePrefix-$id-$signature.webp")
+        return File(cacheRoot, "artwork/$scope/$typePrefix-$id-$signature")
     }
 
     companion object {

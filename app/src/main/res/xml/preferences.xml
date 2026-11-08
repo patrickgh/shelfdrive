@@ -27,6 +27,11 @@
         android:key="account_category"
         android:title="@string/settings_category_account">
 
+        <ListPreference
+            android:key="server_type"
+            android:title="@string/settings_server_type_title"
+            android:persistent="false" />
+
         <EditTextPreference
             android:key="server_url"
             android:title="@string/settings_server_url_title"

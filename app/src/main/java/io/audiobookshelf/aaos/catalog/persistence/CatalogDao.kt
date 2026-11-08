@@ -182,6 +182,9 @@ interface BookSeriesCrossRefDao {
 
 @Dao
 interface MediaProgressDao {
+    @Query("SELECT * FROM media_progress WHERE pendingUpload = 1")
+    suspend fun getPending(): List<MediaProgressEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(progressEntries: List<MediaProgressEntity>)
 

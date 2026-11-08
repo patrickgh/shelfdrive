@@ -1,5 +1,7 @@
 package io.audiobookshelf.aaos.playback
 
+import io.audiobookshelf.aaos.media3.toMedia3PlaybackItems
+import android.content.ContextWrapper
 import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -40,7 +42,9 @@ class PlaybackChapterStorageTest {
     @Test
     fun restoresNewAndOldPlaybackSnapshots() {
         // Use the test APK context so this test cannot overwrite the app's listening state.
-        val context = InstrumentationRegistry.getInstrumentation().context
+        val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().context) {
+            override fun getApplicationContext(): Context = this
+        }
         val preferences = context.getSharedPreferences("playback_state", Context.MODE_PRIVATE)
         val storage = PlaybackStateStorage(context)
         val chapters = listOf(PlaybackChapter("Chapter", 0L, 120_000L))
@@ -65,4 +69,29 @@ class PlaybackChapterStorageTest {
             storage.clear()
         }
     }
+    @Test
+    @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+    fun readAlongSnapshotPreservesSourceStreamAndClipping() {
+        val context = object : ContextWrapper(InstrumentationRegistry.getInstrumentation().context) {
+            override fun getApplicationContext(): Context = this
+        }
+        val storage = PlaybackStateStorage(context)
+        val track = PlaybackTrack("epub-track", "Chapter", playbackTrackUri("1", 0), "audio/mpeg", 20_000, 0,
+            "/api/v1/epub/1/media-overlay/file/audio.mp3?fileId=20", 5000, 25000)
+        val state = StoredPlaybackState("1", positionMs = 12_000, queue = listOf(track), playbackSpeed = 1f,
+            sourceId = "epub:20:revision")
+        try {
+            storage.save(state)
+            val restored = requireNotNull(storage.load())
+            assertEquals(state, restored)
+            val playback = requireNotNull(restored.toResolvedPlayback())
+            assertEquals(state.sourceId, playback.sourceId)
+            val item = playback.toMedia3PlaybackItems().single()
+            assertEquals(5000L, item.clippingConfiguration.startPositionMs)
+            assertEquals(25000L, item.clippingConfiguration.endPositionMs)
+        } finally {
+            storage.clear()
+        }
+    }
+
 }

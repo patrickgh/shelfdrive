@@ -9,6 +9,7 @@ data class PlaybackProgressSnapshot(
     val isFinished: Boolean,
     val reason: PlaybackProgressReason,
     val lastUpdateAt: Long = System.currentTimeMillis(),
+    val sourceId: String? = null,
 )
 
 enum class PlaybackProgressReason(val shouldRefreshBrowse: Boolean) {
