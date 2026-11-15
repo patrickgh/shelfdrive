@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" style="@style/ShelfDrive.Settings.Page" android:id="@+id/settings_detail" android:visibility="gone">
+    <TextView
+        style="@style/ShelfDrive.Settings.Body"
+        android:id="@+id/settings_detail_text" />
+
+    <com.google.android.material.textfield.TextInputLayout style="@style/ShelfDrive.Settings.Input" android:id="@+id/settings_detail_url_layout" android:hint="@string/settings_diagnostics_upload_url_title">
+        <com.google.android.material.textfield.TextInputEditText
+            style="@style/ShelfDrive.Settings.Edit"
+            android:id="@+id/settings_detail_url"
+            android:inputType="textUri"
+            android:imeOptions="actionDone" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout style="@style/ShelfDrive.Settings.Actions" android:id="@+id/settings_detail_actions">
+        <com.google.android.material.button.MaterialButton
+            style="@style/ShelfDrive.Settings.Button"
+            android:id="@+id/settings_detail_cancel"
+            android:text="@android:string/cancel" />
+
+        <com.google.android.material.button.MaterialButton
+            style="@style/ShelfDrive.Settings.Primary"
+            android:id="@+id/settings_detail_action" />
+    </LinearLayout>
+</LinearLayout>

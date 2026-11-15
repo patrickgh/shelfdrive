@@ -1,0 +1,5 @@
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="@color/settings_accent" />
+    <item android:state_focused="true" android:color="@color/settings_accent" />
+    <item android:color="@color/abs_on_surface_variant" />
+</selector>

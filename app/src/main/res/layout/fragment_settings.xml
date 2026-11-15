@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:id="@+id/settings_scroll" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <FrameLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:focusableInTouchMode="true">
+        <LinearLayout style="@style/ShelfDrive.Settings.Overview" android:id="@+id/settings_overview">
+            <LinearLayout style="@style/ShelfDrive.Settings.Column" android:id="@+id/settings_left">
+                <LinearLayout style="@style/ShelfDrive.Settings.Section" android:id="@+id/settings_account">
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Heading"
+                        android:text="@string/settings_category_account" />
+
+                    <View style="@style/ShelfDrive.Settings.Divider" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Title"
+                        android:id="@+id/settings_account_status"
+                        android:accessibilityLiveRegion="polite" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_account_info" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_account_hint" />
+
+                    <LinearLayout style="@style/ShelfDrive.Settings.Actions">
+                        <com.google.android.material.button.MaterialButton
+                            style="@style/ShelfDrive.Settings.Primary"
+                            android:id="@+id/settings_account_setup"
+                            android:text="@string/settings_setup_title" />
+
+                        <com.google.android.material.button.MaterialButton
+                            style="@style/ShelfDrive.Settings.Button"
+                            android:id="@+id/settings_account_logout"
+                            android:text="@string/settings_logout_title" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout style="@style/ShelfDrive.Settings.Section" android:id="@+id/settings_playback">
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Heading"
+                        android:text="@string/settings_category_playback" />
+
+                    <View style="@style/ShelfDrive.Settings.Divider" />
+
+                    <LinearLayout style="@style/ShelfDrive.Settings.Selection" android:id="@+id/settings_skip">
+                        <TextView
+                            style="@style/ShelfDrive.Settings.ValueLabel"
+                            android:text="@string/settings_skip_increment_title" />
+
+                        <TextView
+                            style="@style/ShelfDrive.Settings.Value"
+                            android:id="@+id/settings_skip_value" />
+                    </LinearLayout>
+
+                    <RadioGroup style="@style/ShelfDrive.Settings.Options" android:id="@+id/settings_skip_choices" android:visibility="gone" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_skip_help"
+                        android:text="@string/settings_skip_increment_summary"
+                        android:visibility="gone" />
+
+                    <LinearLayout style="@style/ShelfDrive.Settings.Control" android:id="@+id/settings_progress_row">
+                        <TextView
+                            style="@style/ShelfDrive.Settings.ValueLabel"
+                            android:text="@string/settings_progress_display_title" />
+
+                        <RadioGroup style="@style/ShelfDrive.Settings.InlineOptions" android:id="@+id/settings_progress">
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                style="@style/ShelfDrive.Settings.Radio"
+                                android:id="@+id/settings_book"
+                                android:text="@string/settings_progress_display_book" />
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                style="@style/ShelfDrive.Settings.Radio"
+                                android:id="@+id/settings_chapter"
+                                android:text="@string/settings_progress_display_chapter" />
+                        </RadioGroup>
+                    </LinearLayout>
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:text="@string/settings_progress_display_summary" />
+
+                    <com.google.android.material.materialswitch.MaterialSwitch
+                        style="@style/ShelfDrive.Settings.Switch"
+                        android:id="@+id/settings_rewind"
+                        android:text="@string/settings_rewind_on_pause_title" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/ShelfDrive.Settings.Section" android:id="@+id/settings_catalog">
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Heading"
+                        android:text="@string/settings_category_connection" />
+
+                    <View style="@style/ShelfDrive.Settings.Divider" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Title"
+                        android:id="@+id/settings_sync_status"
+                        android:accessibilityLiveRegion="polite" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_catalog_info" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_cache_info"
+                        android:accessibilityLiveRegion="polite" />
+
+                    <LinearLayout style="@style/ShelfDrive.Settings.Actions">
+                        <com.google.android.material.button.MaterialButton
+                            style="@style/ShelfDrive.Settings.Button"
+                            android:id="@+id/settings_sync"
+                            android:text="@string/settings_resync_title" />
+
+                        <com.google.android.material.button.MaterialButton
+                            style="@style/ShelfDrive.Settings.Button"
+                            android:id="@+id/settings_cache"
+                            android:text="@string/settings_clear_cache_title" />
+                    </LinearLayout>
+                </LinearLayout>
+
+                <LinearLayout style="@style/ShelfDrive.Settings.Section" android:id="@+id/settings_about">
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Heading"
+                        android:text="@string/settings_category_storage" />
+
+                    <View style="@style/ShelfDrive.Settings.Divider" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_version" />
+
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/ShelfDrive.Settings.Link"
+                        android:id="@+id/settings_homepage"
+                        android:text="@string/settings_homepage_title"
+                        app:icon="@drawable/ic_settings_external" />
+
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/ShelfDrive.Settings.Link"
+                        android:id="@+id/settings_privacy"
+                        android:text="@string/settings_privacy_policy_title"
+                        app:icon="@drawable/ic_settings_next" />
+
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/ShelfDrive.Settings.Link"
+                        android:id="@+id/settings_legal"
+                        android:text="@string/settings_legal_notice_title"
+                        app:icon="@drawable/ic_settings_next" />
+                </LinearLayout>
+
+                <LinearLayout style="@style/ShelfDrive.Settings.Section" android:id="@+id/settings_diagnostics">
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Heading"
+                        android:text="@string/settings_category_diagnostics" />
+
+                    <View style="@style/ShelfDrive.Settings.Divider" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_startup_status" />
+
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/ShelfDrive.Settings.Link"
+                        android:id="@+id/settings_upload_url"
+                        android:text="@string/settings_diagnostics_upload_url_title"
+                        app:icon="@drawable/ic_settings_next" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_upload_destination" />
+
+                    <com.google.android.material.button.MaterialButton
+                        style="@style/ShelfDrive.Settings.Button"
+                        android:id="@+id/settings_upload"
+                        android:text="@string/settings_diagnostics_upload_title" />
+
+                    <TextView
+                        style="@style/ShelfDrive.Settings.Info"
+                        android:id="@+id/settings_upload_status"
+                        android:accessibilityLiveRegion="polite" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout style="@style/ShelfDrive.Settings.Column" android:id="@+id/settings_right" android:visibility="gone" />
+        </LinearLayout>
+
+        <include layout="@layout/settings_server_form" />
+
+        <include layout="@layout/settings_detail" />
+    </FrameLayout>
+</ScrollView>

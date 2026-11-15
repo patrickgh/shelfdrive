@@ -6,4 +6,8 @@
     <color name="abs_on_surface_variant">#B7AEA1</color>
     <color name="abs_accent">#C86E3A</color>
     <color name="abs_on_accent">#1B100B</color>
+    <color name="settings_accent">#FFAD7A</color>
+    <color name="settings_error">#FFAAA7</color>
+    <color name="settings_field_outline">#667885</color>
+    <color name="settings_danger">#4B272B</color>
 </resources>

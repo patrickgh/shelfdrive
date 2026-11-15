@@ -9,8 +9,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import androidx.media3.session.SessionToken
-import com.google.android.material.appbar.MaterialToolbar
 import com.google.common.util.concurrent.ListenableFuture
 import io.audiobookshelf.aaos.BuildConfig
 import io.audiobookshelf.aaos.R
@@ -37,15 +37,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
+internal enum class SettingsAuthAction { LOGIN, LOGOUT }
+
 internal data class SettingsState(
     val authSnapshot: AuthSnapshot = AuthSnapshot(status = AuthStatus.LOGGED_OUT),
     val syncSnapshot: SyncSnapshot = SyncSnapshot(status = SyncStatus.IDLE),
-    val cacheSnapshot: CacheSnapshot = CacheSnapshot(),
+    val cacheSnapshot: CacheSnapshot? = null,
     val diagnosticsSnapshot: StartupDiagnosticsSnapshot = StartupDiagnosticsSnapshot(),
     val diagnosticsUploadSnapshot: DiagnosticsUploadSnapshot = DiagnosticsUploadSnapshot(),
     val commandChannelReady: Boolean = false,
-    val loginInProgress: Boolean = false,
-)
+    val authStateKnown: Boolean = false,
+    val authAction: SettingsAuthAction? = null,
+    val authRequestFailed: Boolean = false,
+    val cacheClearing: Boolean = false,
+    val cacheClearFailed: Boolean = false,
+) {
+    val authActionInProgress: Boolean get() = authAction != null
+}
 
 class SettingsActivity : AppCompatActivity() {
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,10 +71,6 @@ class SettingsActivity : AppCompatActivity() {
         diagnosticEventLogger = if (BuildConfig.DIAGNOSTICS_ENABLED) DiagnosticEventLogger(this) else null
         diagnosticEventLogger?.record("settings_created")
         setContentView(R.layout.activity_settings)
-
-        findViewById<MaterialToolbar>(R.id.toolbar).apply {
-            setNavigationOnClickListener { finish() }
-        }
 
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
@@ -100,6 +104,7 @@ class SettingsActivity : AppCompatActivity() {
         controllerFuture = null
         mediaController?.release()
         mediaController = null
+        state = state.copy(authStateKnown = false)
         diagnosticEventLogger?.record("settings_stopped")
         super.onStop()
     }
@@ -110,14 +115,14 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     internal fun performLogin(serverType: ServerType, serverUrl: String?, username: String?, password: String?) {
-        if (state.loginInProgress) {
+        if (state.authActionInProgress || !state.authStateKnown) {
             return
         }
         if (mediaController == null) {
             renderState()
             return
         }
-        state = state.copy(loginInProgress = true)
+        state = state.copy(authAction = SettingsAuthAction.LOGIN, authRequestFailed = false)
         renderState()
         val args = Bundle().apply {
             putString(AuthCommands.EXTRA_SERVER_TYPE, serverType.name)
@@ -129,17 +134,24 @@ class SettingsActivity : AppCompatActivity() {
             AuthCommands.CMD_LOGIN,
             args,
             ::handleAuthResult,
+            ::failAuthRequest,
         )
     }
 
     internal fun performLogout() {
-        state = state.copy(loginInProgress = true)
+        if (mediaController == null || !state.authStateKnown || state.authActionInProgress) return
+        state = state.copy(authAction = SettingsAuthAction.LOGOUT, authRequestFailed = false)
         renderState()
-        sendCommand(AuthCommands.CMD_LOGOUT, null, ::handleAuthResult)
+        sendCommand(AuthCommands.CMD_LOGOUT, null, ::handleAuthResult, ::failAuthRequest)
     }
 
     internal fun performResync() {
+        if (state.cacheClearing || state.authActionInProgress || state.syncSnapshot.status == SyncStatus.RUNNING) return
         val previousSyncSnapshot = state.syncSnapshot
+        val failSync = {
+            state = state.copy(syncSnapshot = previousSyncSnapshot.copy(status = SyncStatus.FAILED, message = null))
+            renderState()
+        }
         state = state.copy(
             syncSnapshot = previousSyncSnapshot.copy(status = SyncStatus.RUNNING, message = null),
         )
@@ -147,16 +159,21 @@ class SettingsActivity : AppCompatActivity() {
         sendCommand(
             command = SyncCommands.CMD_SYNC_NOW,
             extras = null,
-            onResult = ::handleSyncResult,
-            onFailure = {
-                state = state.copy(syncSnapshot = previousSyncSnapshot)
-                renderState()
+            onResult = { result ->
+                val snapshot = SyncSnapshot.fromBundle(result)
+                if (snapshot == null) failSync() else updateSyncState(snapshot)
             },
+            onFailure = failSync,
         )
     }
 
     internal fun performClearCache() {
-        sendCommand(CacheCommands.CMD_CLEAR_CACHE, null, ::handleClearCacheResult)
+        if (mediaController == null || state.cacheClearing || state.authActionInProgress ||
+            state.syncSnapshot.status == SyncStatus.RUNNING
+        ) return
+        state = state.copy(cacheClearing = true, cacheClearFailed = false)
+        renderState()
+        sendCommand(CacheCommands.CMD_CLEAR_CACHE, null, ::handleClearCacheResult, ::failCacheClear)
     }
 
     internal fun updateDiagnosticsUploadUrl(uploadUrl: String) {
@@ -185,7 +202,7 @@ class SettingsActivity : AppCompatActivity() {
                 val packageFile = DiagnosticsPackageBuilder(this@SettingsActivity).build(
                     authSnapshot = state.authSnapshot,
                     syncSnapshot = state.syncSnapshot,
-                    cacheSnapshot = state.cacheSnapshot,
+                    cacheSnapshot = state.cacheSnapshot ?: CacheSnapshot(),
                     startupSnapshot = startupSnapshot,
                     uploadSnapshot = uploadSnapshot,
                 )
@@ -242,16 +259,16 @@ class SettingsActivity : AppCompatActivity() {
                 runCatching {
                     future.get()
                 }.onSuccess { result ->
+                    val succeeded = result.resultCode == SessionResult.RESULT_SUCCESS
                     diagnosticEventLogger?.record(
-                        "settings_command_success",
+                        if (succeeded) "settings_command_success" else "settings_command_failed",
                         mapOf(
                             "command" to command,
                             "resultCode" to result.resultCode.toString(),
                         ),
                     )
-                    onResult(result.extras)
+                    if (succeeded) onResult(result.extras) else onFailure()
                 }.onFailure { exception ->
-                    state = state.copy(loginInProgress = false)
                     onFailure()
                     diagnosticEventLogger?.record(
                         "settings_command_failed",
@@ -294,12 +311,12 @@ class SettingsActivity : AppCompatActivity() {
                     controllerFuture = null
                     diagnosticEventLogger?.record("settings_controller_connect_success")
                     renderState()
-                    sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult)
+                    sendCommand(AuthCommands.CMD_GET_AUTH_STATE, null, ::handleAuthResult, ::failAuthRequest)
                     requestCacheState()
                 }.onFailure { exception ->
                     controllerFuture = null
                     mediaController = null
-                    state = state.copy(loginInProgress = false)
+                    state = state.copy(authAction = null)
                     diagnosticEventLogger?.record(
                         "settings_controller_connect_failed",
                         mapOf(
@@ -339,15 +356,16 @@ class SettingsActivity : AppCompatActivity() {
     private fun handleAuthResult(resultData: Bundle?) {
         val authSnapshot = AuthSnapshot.fromBundle(resultData)
         if (authSnapshot == null) {
-            state = state.copy(loginInProgress = false)
-            renderState()
+            failAuthRequest()
             return
         }
         val syncSnapshot = SyncSnapshot.fromBundle(resultData)
         state = state.copy(
             authSnapshot = authSnapshot,
             syncSnapshot = syncSnapshot ?: state.syncSnapshot,
-            loginInProgress = false,
+            authAction = null,
+            authStateKnown = true,
+            authRequestFailed = false,
         )
         renderState()
         if (syncSnapshot == null) {
@@ -356,25 +374,45 @@ class SettingsActivity : AppCompatActivity() {
         requestCacheState()
     }
 
+    private fun failAuthRequest() {
+        state = state.copy(authAction = null, authRequestFailed = true)
+        renderState()
+    }
+
     private fun handleSyncResult(resultData: Bundle?) {
         val snapshot = SyncSnapshot.fromBundle(resultData) ?: return
+        updateSyncState(snapshot)
+    }
+
+    private fun updateSyncState(snapshot: SyncSnapshot) {
         state = state.copy(syncSnapshot = snapshot)
         renderState()
         requestCacheState()
     }
 
     private fun handleCacheResult(resultData: Bundle?) {
+        if (resultData == null || resultData.isEmpty) return
         val snapshot = CacheSnapshot.fromBundle(resultData) ?: return
         state = state.copy(cacheSnapshot = snapshot)
         renderState()
     }
 
     private fun handleClearCacheResult(resultData: Bundle?) {
-        val snapshot = CacheSnapshot.fromBundle(resultData) ?: return
+        val snapshot = resultData?.takeUnless { it.isEmpty }?.let(CacheSnapshot::fromBundle)
+        if (snapshot == null) {
+            failCacheClear()
+            return
+        }
         state = state.copy(
             cacheSnapshot = snapshot,
             syncSnapshot = SyncSnapshot(status = SyncStatus.IDLE),
+            cacheClearing = false,
         )
+        renderState()
+    }
+
+    private fun failCacheClear() {
+        state = state.copy(cacheClearing = false, cacheClearFailed = true)
         renderState()
     }
 

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" style="@style/ShelfDrive.Settings.Page" android:id="@+id/settings_setup" android:visibility="gone">
+    <TextView
+        style="@style/ShelfDrive.Settings.Info"
+        android:id="@+id/settings_setup_intro"
+        android:text="@string/settings_setup_description" />
+
+    <LinearLayout style="@style/ShelfDrive.Settings.Selection" android:id="@+id/settings_server_type">
+        <TextView
+            style="@style/ShelfDrive.Settings.ValueLabel"
+            android:text="@string/settings_server_type_title" />
+
+        <TextView
+            style="@style/ShelfDrive.Settings.Value"
+            android:id="@+id/settings_server_type_value" />
+    </LinearLayout>
+
+    <RadioGroup style="@style/ShelfDrive.Settings.Options" android:id="@+id/settings_server_choices" android:visibility="gone" />
+
+    <com.google.android.material.textfield.TextInputLayout style="@style/ShelfDrive.Settings.Input" android:id="@+id/settings_server_url_layout" android:hint="@string/settings_server_url_title">
+        <com.google.android.material.textfield.TextInputEditText
+            style="@style/ShelfDrive.Settings.Edit"
+            android:id="@+id/settings_server_url"
+            android:inputType="textUri"
+            android:imeOptions="actionNext"
+            android:nextFocusForward="@+id/settings_username" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout style="@style/ShelfDrive.Settings.Input" android:id="@+id/settings_username_layout" android:hint="@string/settings_username_title">
+        <com.google.android.material.textfield.TextInputEditText
+            style="@style/ShelfDrive.Settings.Edit"
+            android:id="@+id/settings_username"
+            android:inputType="textNoSuggestions"
+            android:imeOptions="actionNext"
+            android:nextFocusForward="@+id/settings_password" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout style="@style/ShelfDrive.Settings.Actions" android:id="@+id/settings_password_row">
+        <com.google.android.material.textfield.TextInputLayout style="@style/ShelfDrive.Settings.Input" android:id="@+id/settings_password_layout" android:hint="@string/settings_password_title">
+            <com.google.android.material.textfield.TextInputEditText
+                style="@style/ShelfDrive.Settings.Edit"
+                android:id="@+id/settings_password"
+                android:inputType="textPassword"
+                android:saveEnabled="false"
+                android:imeOptions="actionDone" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.button.MaterialButton
+            style="@style/ShelfDrive.Settings.Button"
+            android:id="@+id/settings_password_visibility"
+            android:text="@string/settings_password_show" />
+    </LinearLayout>
+
+    <TextView
+        style="@style/ShelfDrive.Settings.Title"
+        android:id="@+id/settings_setup_status"
+        android:accessibilityLiveRegion="polite"
+        android:visibility="gone" />
+
+    <TextView
+        style="@style/ShelfDrive.Settings.Info"
+        android:id="@+id/settings_setup_message"
+        android:visibility="gone" />
+
+    <com.google.android.material.button.MaterialButton
+        style="@style/ShelfDrive.Settings.Primary"
+        android:id="@+id/settings_connect"
+        android:text="@string/settings_connect" />
+</LinearLayout>

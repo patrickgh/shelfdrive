@@ -108,8 +108,8 @@ emulator. Desktop hostnames often do not resolve in AAOS images; use a LAN IP or
 1. Install ShelfDrive on the AAOS device or emulator.
 2. Open ShelfDrive from the vehicle launcher or media app list.
 3. Open Settings from the media host settings affordance.
-4. Select the server type (Audiobookshelf or BookOrbit), then enter its base URL, username, and password.
-5. Log in and run a catalog sync.
+4. Under **Server & account**, choose **Set up server**. Select Audiobookshelf or BookOrbit and enter the server's base URL, username, and password.
+5. Select **Connect**. ShelfDrive synchronizes the catalog after signing in.
 6. Return to the media view and browse recently listened books, audiobooks, or authors.
 
 BookOrbit support targets version 3.7 and uses native username/password authentication.
@@ -180,19 +180,10 @@ in the mini-player.
 
 ## Settings
 
-The Settings screen is intentionally focused and vehicle-friendly:
-
-- Connection state.
-- Authentication state.
-- Synced catalog counts.
-- Manual catalog resync.
-- Server type, URL, username, and password.
-- Login/logout action.
-- Configurable skip interval.
-- Book or chapter progress display.
-- 15-second rewind-on-pause toggle.
-- Cache usage and clear-cache action.
-- App version.
+- **Server & account** shows the connected server and account. Sign out before setting up a different server.
+- **Playback** lets you choose a skip interval, switch between book and chapter progress, and turn the 15-second rewind on or off.
+- **Catalog & storage** shows sync status, catalog counts, and cache usage. You can sync manually or clear the local cache after confirming.
+- **About** contains the app version, homepage, privacy policy, and legal notice.
 
 ## Cache Policy
 

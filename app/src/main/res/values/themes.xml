@@ -1,4 +1,4 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
     <style name="Theme.AbsAaos" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/abs_background</item>
         <item name="android:colorBackground">@color/abs_background</item>
@@ -14,18 +14,6 @@
         <item name="colorOnPrimary">@color/abs_on_accent</item>
         <item name="colorOnSurface">@color/abs_on_surface</item>
         <item name="colorPrimary">@color/abs_accent</item>
-        <item name="colorSurface">@color/abs_surface</item>
-        <item name="preferenceTheme">@style/PreferenceThemeOverlay.AbsAaos</item>
-    </style>
-
-    <style name="PreferenceThemeOverlay.AbsAaos" parent="@style/PreferenceThemeOverlay.v14.Material">
-        <item name="android:colorAccent">@color/abs_accent</item>
-        <item name="android:colorBackground">@color/abs_background</item>
-        <item name="android:textColorPrimary">@color/abs_on_surface</item>
-        <item name="android:textColorSecondary">@color/abs_on_surface_variant</item>
-        <item name="colorAccent">@color/abs_accent</item>
-        <item name="colorControlNormal">@color/abs_on_surface_variant</item>
-        <item name="colorOnSurface">@color/abs_on_surface</item>
         <item name="colorSurface">@color/abs_surface</item>
     </style>
 

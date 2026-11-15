@@ -1,0 +1,212 @@
+<resources>
+    <style name="ShelfDrive.Settings" parent="" />
+
+    <style name="ShelfDrive.Settings.Page">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_gravity">top|center_horizontal</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingStart">@dimen/settings_list_horizontal_padding</item>
+        <item name="android:paddingEnd">@dimen/settings_list_horizontal_padding</item>
+        <item name="android:paddingTop">20dp</item>
+        <item name="android:paddingBottom">28dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Overview" parent="ShelfDrive.Settings.Page">
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Column">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Section">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:paddingBottom">28dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Info">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:lineSpacingExtra">3dp</item>
+        <item name="android:textSize">@dimen/settings_summary_size</item>
+        <item name="android:textColor">@color/abs_on_surface_variant</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Body" parent="ShelfDrive.Settings.Info">
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:lineSpacingExtra">5dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Title" parent="ShelfDrive.Settings.Info">
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:textSize">@dimen/settings_title_size</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Heading" parent="ShelfDrive.Settings.Info">
+        <item name="android:accessibilityHeading">true</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textColor">@color/settings_accent</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Divider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">1dp</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:layout_marginBottom">12dp</item>
+        <item name="android:background">@color/abs_surface_variant</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Actions">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:baselineAligned">false</item>
+        <item name="android:gravity">top</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Control" parent="ShelfDrive.Settings.Actions">
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:background">@drawable/bg_settings_control</item>
+        <item name="android:minHeight">@dimen/settings_touch_size</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:paddingTop">6dp</item>
+        <item name="android:paddingBottom">6dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Selection" parent="ShelfDrive.Settings.Control">
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.ValueLabel" parent="ShelfDrive.Settings.Title">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginTop">0dp</item>
+        <item name="android:layout_marginEnd">12dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Value" parent="ShelfDrive.Settings.Title">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_marginTop">0dp</item>
+        <item name="android:gravity">end|center_vertical</item>
+        <item name="android:drawablePadding">10dp</item>
+        <item name="android:textColor">@color/settings_accent</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Options">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.InlineOptions" parent="ShelfDrive.Settings.Options">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Radio" parent="Widget.Material3.CompoundButton.RadioButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/settings_touch_size</item>
+        <item name="android:minWidth">@dimen/settings_touch_size</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:textSize">@dimen/settings_summary_size</item>
+        <item name="buttonTint">@color/settings_checked</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Switch" parent="Widget.Material3.CompoundButton.MaterialSwitch">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:background">@drawable/bg_settings_control</item>
+        <item name="android:foreground">?attr/selectableItemBackground</item>
+        <item name="android:minHeight">@dimen/settings_touch_size</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:textSize">@dimen/settings_title_size</item>
+        <item name="switchPadding">14dp</item>
+        <item name="thumbTint">@color/settings_switch_thumb</item>
+        <item name="trackTint">@color/settings_switch_track</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Button" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">10dp</item>
+        <item name="android:layout_marginEnd">12dp</item>
+        <item name="android:minHeight">@dimen/settings_touch_size</item>
+        <item name="android:minWidth">@dimen/settings_touch_size</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/settings_button_text</item>
+        <item name="android:textSize">@dimen/settings_summary_size</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="cornerRadius">14dp</item>
+        <item name="strokeColor">@color/abs_surface_variant</item>
+        <item name="backgroundTint">@color/abs_surface</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Primary" parent="ShelfDrive.Settings.Button">
+        <item name="backgroundTint">@color/settings_primary_background</item>
+        <item name="android:textColor">@color/settings_primary_text</item>
+        <item name="strokeWidth">0dp</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Link" parent="ShelfDrive.Settings.Button">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_marginEnd">0dp</item>
+        <item name="android:gravity">start|center_vertical</item>
+        <item name="iconGravity">end</item>
+        <item name="iconTint">@color/settings_accent</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Input" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">18dp</item>
+        <item name="boxBackgroundColor">@color/abs_surface</item>
+        <item name="boxStrokeColor">@color/settings_input_stroke</item>
+        <item name="boxStrokeErrorColor">@color/settings_error</item>
+        <item name="boxCornerRadiusTopStart">12dp</item>
+        <item name="boxCornerRadiusTopEnd">12dp</item>
+        <item name="boxCornerRadiusBottomStart">12dp</item>
+        <item name="boxCornerRadiusBottomEnd">12dp</item>
+        <item name="errorTextColor">@color/settings_error</item>
+        <item name="errorTextAppearance">@style/TextAppearance.ShelfDrive.SettingsInputHelp</item>
+        <item name="helperTextTextAppearance">@style/TextAppearance.ShelfDrive.SettingsInputHelp</item>
+        <item name="hintTextAppearance">@style/TextAppearance.ShelfDrive.SettingsInputHelp</item>
+        <item name="hintTextColor">@color/settings_accent</item>
+        <item name="hintAnimationEnabled">false</item>
+    </style>
+
+    <style name="TextAppearance.ShelfDrive.SettingsInputHelp" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">@color/abs_on_surface_variant</item>
+    </style>
+
+    <style name="ShelfDrive.Settings.Edit">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/settings_touch_size</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">@color/abs_on_surface</item>
+        <item name="android:textSize">@dimen/settings_title_size</item>
+    </style>
+</resources>
