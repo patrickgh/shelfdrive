@@ -98,20 +98,37 @@ class BookOrbitApiClientTest {
                         .put(card(3, "mp3", "sidecar")) else JSONArray().put(card(4, "mp3"))
                     JSONObject().put("items", items).put("total", 4).toString()
                 }
-                "/prefix/api/v1/books/1" -> detail(1).toString()
-                "/prefix/api/v1/books/4" -> detail(4).toString()
+                "/prefix/api/v1/books/1" -> detail(1).put("subtitle", "").toString()
+                "/prefix/api/v1/books/4" -> detail(4).put("subtitle", "Subtitle").toString()
                 else -> error("Unexpected request ${request.url}")
             }
             200 to response
         }
         val books = client.getLibraryItems(BASE, TOKEN, "1")
         assertEquals(listOf("1", "4"), books.map { it.id })
+        assertEquals(listOf(null, "Subtitle"), books.map { it.subtitle })
         assertEquals("Author", books.first().authors.single().name)
         assertEquals("1.5", books.first().series.single().sequence)
         assertEquals("Description", books.first().description)
         assertEquals(120_000L, books.first().durationMs)
         assertEquals(2, requests.count { it.endsWith("/libraries/1/books") })
         assertEquals(4, requests.size)
+    }
+
+    @Test
+    fun nonStringSubtitleIsRejected() {
+        val client = client { request ->
+            val response = when (request.url.encodedPath) {
+                "/prefix/api/v1/libraries/1/books" -> JSONObject().put("items", JSONArray().put(card(1))).put("total", 1)
+                "/prefix/api/v1/books/1" -> detail(1).put("subtitle", 42)
+                else -> error("Unexpected request ${request.url}")
+            }
+            200 to response.toString()
+        }
+        val error = assertThrows(IOException::class.java) {
+            runBlocking { client.getLibraryItems(BASE, TOKEN, "1") }
+        }
+        assertEquals("BookOrbit response has invalid subtitle type.", error.message)
     }
 
     @Test

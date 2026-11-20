@@ -120,11 +120,16 @@ class BookOrbitApiClient(
         }
         val title = json.optionalString("title")
             ?: throw IOException("BookOrbit book ${json.numericId()} has no title.")
+        val subtitle = when (val value = json.opt("subtitle")) {
+            null, JSONObject.NULL -> null
+            is String -> value.ifBlank { null }
+            else -> throw IOException("BookOrbit response has invalid subtitle type.")
+        }
         val overlay = preferredReadAlong(json)
         val duration = (overlay?.optJSONObject("mediaOverlay") ?: json.optJSONObject("audioMetadata"))?.opt("durationSeconds") as? Number
         val durationMs = duration?.toDouble()?.takeIf { it.isFinite() && it > 0 }?.let { (it * 1000).toLong() }
         return BookSummary(
-            json.numericId(), libraryId, title, title, json.optionalString("subtitle"), json.optionalString("description"),
+            json.numericId(), libraryId, title, title, subtitle, json.optionalString("description"),
             json.optionalString("coverVersion"), durationMs, authors.joinToString(", ") { it.name }.ifBlank { null },
             authors, series, json.requiredString("status") == "present",
         )
